@@ -140,19 +140,12 @@ func (this *Socket) Protobuf(code uint16, index uint16, data proto.Message) (re 
 
 func (this *Socket) processMsg(socket *Socket, msg *Message) {
 	this.KeepAlive()
-	//if msg.Head != nil && msg.Head.Flags.Has(Message.FlagCompress) && msg.Data != nil {
-	//	data, err := utils.GZipUnCompress(msg.Data)
-	//	if err != nil {
-	//		this.close()
-	//		logger.Error("uncompress failed socket:%v err:%v", socket.IId(), err)
-	//		return
-	//	}
-	//	msg.Data = data
-	//	msg.Head.Flags.Leave(Message.FlagCompress)
-	//	msg.Head.Size = uint32(len(msg.Data))
-	//}
 	//logger.Debug("processMsg:%+v", msg)
-	this.cosnet.call(socket, msg)
+	err := this.cosnet.call(socket, msg)
+	if err != nil {
+		logger.Error("processMsg:%v", err)
+		socket.close()
+	}
 }
 
 func (this *Socket) readMsg(ctx context.Context) {

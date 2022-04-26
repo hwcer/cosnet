@@ -9,19 +9,23 @@ import (
 
 const HeaderSize = 8
 
-type Message struct {
-	*Header        // 消息头
-	data    []byte //消息数据
-}
-
 type Header struct {
 	size  int32  //数据BODY 4
 	Code  uint16 //协议号 2
 	Index uint16 //协议编号 2
 }
 
+type Message struct {
+	*Header        // 消息头
+	data    []byte //消息数据
+}
+
 func NewHeader(code uint16, index uint16) *Header {
 	return &Header{Code: code, Index: index}
+}
+
+func (this *Header) Size() int32 {
+	return this.size
 }
 
 //Parse 解析二进制头并填充到对应字段
@@ -29,12 +33,13 @@ func (this *Header) Parse(head []byte) error {
 	if len(head) != HeaderSize {
 		return errors.New("head len error")
 	}
-	if err := utils.BytesToInt(head[0:2], &this.Code); err != nil {
+	if err := utils.BytesToInt(head[0:4], &this.size); err != nil {
 		return err
 	}
-	if err := utils.BytesToInt(head[2:6], &this.size); err != nil {
+	if err := utils.BytesToInt(head[4:6], &this.Code); err != nil {
 		return err
 	}
+
 	if err := utils.BytesToInt(head[6:8], &this.Index); err != nil {
 		return err
 	}
@@ -48,10 +53,10 @@ func (this *Header) Parse(head []byte) error {
 //Bytes 生成二进制文件
 func (this *Header) Bytes() (buffer *bytes.Buffer, err error) {
 	buffer = new(bytes.Buffer)
-	if err = utils.IntToBuffer(buffer, this.Code); err != nil {
+	if err = utils.IntToBuffer(buffer, this.size); err != nil {
 		return
 	}
-	if err = utils.IntToBuffer(buffer, this.size); err != nil {
+	if err = utils.IntToBuffer(buffer, this.Code); err != nil {
 		return
 	}
 	if err = utils.IntToBuffer(buffer, this.Index); err != nil {

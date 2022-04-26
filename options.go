@@ -1,8 +1,8 @@
 package cosnet
 
 var Options = struct {
-	MaxDataSize int32 //包体最大长度
-
+	MaxDataSize         int32  //包体最大长度
+	MsgDataMode         Mode   //默认BODY格式
 	WriteChanSize       int32  //写通道缓存
 	ConnectMaxSize      int32  //连接人数
 	ClientReconnectMax  uint16 //断线重连最大尝试次数
@@ -13,6 +13,7 @@ var Options = struct {
 
 }{
 	MaxDataSize:         1024 * 1024,
+	MsgDataMode:         ModeTypeJson,
 	WriteChanSize:       500,
 	ConnectMaxSize:      50000,
 	ClientReconnectMax:  1000,
