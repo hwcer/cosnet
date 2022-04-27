@@ -4,9 +4,10 @@ package cosnet
 type EventType uint8
 
 const (
-	EventTypeHeartbeat  EventType = iota + 1 //心跳事件
-	EventTypeConnected                       //连接成功
-	EventTypeDisconnect                      //断开连接
+	EventTypeHeartbeat      EventType = iota + 1 //心跳事件
+	EventTypeConnected                           //连接成功
+	EventTypeDisconnect                          //断开连接
+	EventTypeAuthentication                      //身份认证
 )
 
 type EventsFunc func(*Socket)
