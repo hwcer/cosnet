@@ -8,6 +8,8 @@ const (
 	EventTypeConnected                           //连接成功
 	EventTypeDisconnect                          //断开连接
 	EventTypeAuthentication                      //身份认证
+	EventTypeReplaced                            //被顶号
+	EventTypeReconnected                         //重登录
 )
 
 type EventsFunc func(*Socket)

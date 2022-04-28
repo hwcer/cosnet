@@ -5,7 +5,7 @@ var Options = struct {
 	WriteChanSize       int32  //写通道缓存
 	ConnectMaxSize      int32  //连接人数
 	SocketHeartbeat     uint16 //(MS)服务器心跳,用来检测玩家僵尸连接
-	SocketConnectTime   uint16 //(MS)连接超时几次心跳没有动作被判断掉线
+	SocketConnectTime   uint16 //(MS)没有动作被判断掉线
 	SocketReconnectTime uint16 //(MS)掉线后等待断线重连
 	//AuthenticationTime  uint16 //(MS)连接后等待登录的时间，默认 0：不需要登录
 	//ReWriteTime         int32  //(MS)写消息失败时，重试间隔时间
@@ -19,5 +19,5 @@ var Options = struct {
 	ClientReconnectMax:  1000,
 	ClientReconnectTime: 5,
 	SocketHeartbeat:     1000,
-	SocketConnectTime:   10,
+	SocketConnectTime:   50000,
 }

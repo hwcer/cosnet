@@ -29,6 +29,10 @@ type Socket struct {
 	cache.Data
 }
 
+func (this *Socket) emit(e EventType) {
+	this.cosnet.Emit(e, this)
+}
+
 //start 启动工作进程
 func (this *Socket) start() error {
 	this.stop = make(chan struct{})
@@ -56,19 +60,14 @@ func (this *Socket) close() {
 
 //Close 强制关闭,无法重连
 func (this *Socket) Close(msg ...*Message) {
+	defer func() {
+		_ = recover()
+	}()
 	for _, m := range msg {
 		this.Write(m)
 	}
 	this.status = StatusTypeRemoved
 	close(this.cwrite)
-	//if len(msg) > 0 && !this.stopped() {
-	//	this.stopping += 1
-	//	for _, m := range msg {
-	//		this.Write(m)
-	//	}
-	//} else {
-	//	this.close()
-	//}
 }
 
 func (this *Socket) Status() int32 {
@@ -183,12 +182,13 @@ func (this *Socket) readMsg(ctx context.Context) {
 			return
 		}
 		//logger.Debug("READ HEAD:%v", head)
-		msg := &Message{}
+		msg := &Message{Header: &Header{}}
 		err = msg.Header.Parse(head)
 		if err != nil {
-			//logger.Debug("READ ERR:%v", err)
+			logger.Debug("READ ERR:%v", err)
 			return
 		}
+		logger.Debug("READ HEAD:%+v", msg.Header)
 		if msg.Header.size > 0 {
 			msg.data = make([]byte, msg.Header.size)
 			_, err = io.ReadFull(this.conn, msg.data)

@@ -5,15 +5,8 @@ import (
 	"github.com/hwcer/cosgo/storage/cache"
 	"github.com/hwcer/cosgo/utils"
 	"net"
-	"sync"
 	"time"
 )
-
-func newSocketSetter(id uint64, val interface{}) cache.Dataset {
-	dataset := val.(cache.Dataset)
-	dataset.Reset(id, nil)
-	return dataset
-}
 
 func New() *Cosnet {
 	cosnet := &Cosnet{
@@ -21,9 +14,8 @@ func New() *Cosnet {
 		handle:   make(map[uint16]HandlerFunc),
 		listener: make(map[EventType][]EventsFunc),
 	}
-	cosnet.sockets = cache.New(1024)
-	cosnet.sockets.NewSetter = newSocketSetter
-	cosnet.players = &players{cosnet: cosnet, dict: new(sync.Map)}
+	cosnet.Sockets = newSockets()
+	cosnet.Players = newPlayers()
 	cosnet.scc.CGO(cosnet.heartbeat)
 	return cosnet
 }
@@ -32,27 +24,18 @@ func New() *Cosnet {
 type Cosnet struct {
 	scc      *utils.SCC
 	handle   map[uint16]HandlerFunc     //注册的消息处理器
-	sockets  *cache.Cache               //存储socket
-	players  *players                   //存储用户登录信息
 	servers  []*Server                  //全局关闭时需要关闭的服务
 	listener map[EventType][]EventsFunc //监听事件
+	Sockets  *sockets                   //存储socket
+	Players  *players                   //存储用户登录信息
 	Handler  HandlerFunc                //默认消息处理,handle中未明确注册的消息一律进入到这里
-}
-
-func (this *Cosnet) create(socket *Socket) {
-	this.sockets.Push(socket)
-	this.Emit(EventTypeConnected, socket)
 }
 
 //remove 移除Socket
 func (this *Cosnet) remove(socket *Socket) {
+	this.Sockets.remove(socket)
+	this.Players.remove(socket)
 	this.Emit(EventTypeDisconnect, socket)
-	this.sockets.Delete(socket.Id())
-	if Options.SocketReconnectTime > 0 && socket.Authenticated() {
-		go func() {
-			this.players.remove(socket)
-		}()
-	}
 }
 
 //heartbeat 启动协程定时清理无效用户
@@ -71,7 +54,7 @@ func (this *Cosnet) heartbeat(ctx context.Context) {
 	}
 }
 func (this *Cosnet) doHeartbeat() {
-	this.sockets.Range(func(v cache.Dataset) bool {
+	this.Sockets.dict.Range(func(v cache.Dataset) bool {
 		socket := v.(*Socket)
 		socket.Heartbeat()
 		this.Emit(EventTypeHeartbeat, socket)
@@ -97,26 +80,39 @@ func (this *Cosnet) New(conn net.Conn, netType NetType) (sock *Socket, err error
 	sock.Data = *cache.NewData()
 	err = sock.start()
 	if err == nil {
-		this.create(sock)
+		this.Sockets.Push(sock)
+		this.Emit(EventTypeConnected, sock)
 	}
 	return
 }
 
 //Socket 通过SOCKETID获取SOCKET
-func (this *Cosnet) Socket(id uint64) (*Socket, bool) {
-	if v, ok := this.sockets.Get(id); !ok {
-		return nil, false
-	} else if v2, ok2 := v.(*Socket); ok2 {
-		return v2, true
-	} else {
-		return nil, false
+// id.(string) 通过用户ID获取
+// id.(uint64) 通过SOCKET ID获取
+func (this *Cosnet) Socket(id interface{}) (socket *Socket, ok bool) {
+	switch id.(type) {
+	case string:
+		socket, ok = this.Players.Socket(id.(string))
+	case uint64:
+		socket, ok = this.Sockets.Socket(id.(uint64))
 	}
+	return
+}
+
+//Player 获取用户对象
+func (this *Cosnet) Player(id interface{}) (socket *player, ok bool) {
+	switch id.(type) {
+	case string:
+		socket, ok = this.Players.Player(id.(string))
+	case uint64:
+		socket, ok = this.Sockets.Player(id.(uint64))
+	}
+	return
 }
 
 //Broadcast 广播,filter 过滤函数，如果不为nil且返回false则不对当期socket进行发送消息
 func (this *Cosnet) Broadcast(msg *Message, filter func(*Socket) bool) {
-	this.sockets.Range(func(v cache.Dataset) bool {
-		sock := v.(*Socket)
+	this.Sockets.Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
 			sock.Write(msg)
 		}
