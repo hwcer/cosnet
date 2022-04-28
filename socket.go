@@ -185,14 +185,15 @@ func (this *Socket) readMsg(ctx context.Context) {
 		msg := &Message{Header: &Header{}}
 		err = msg.Header.Parse(head)
 		if err != nil {
-			logger.Debug("READ ERR:%v", err)
+			logger.Debug("READ HEAD ERR:%v", err)
 			return
 		}
-		logger.Debug("READ HEAD:%+v", msg.Header)
+		//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
 		if msg.Header.size > 0 {
 			msg.data = make([]byte, msg.Header.size)
 			_, err = io.ReadFull(this.conn, msg.data)
 			if err != nil {
+				logger.Debug("READ BODY ERR:%v", err)
 				return
 			}
 		}
@@ -225,6 +226,7 @@ func (this *Socket) writeMsgTrue(msg *Message) bool {
 	if err != nil {
 		return false
 	}
+	logger.Debug("write HEAD:%+v, DATA:%v", *msg.Header, data)
 	var n int
 	writeCount := 0
 	for writeCount < len(data) {
