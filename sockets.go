@@ -1,21 +1,23 @@
 package cosnet
 
-import "github.com/hwcer/cosgo/storage/cache"
+import (
+	"github.com/hwcer/cosgo/smap"
+)
 
-func newSocketSetter(id uint64, val interface{}) cache.Dataset {
-	dataset := val.(cache.Dataset)
-	dataset.Reset(id, nil)
-	return dataset
+func newSetter(id uint64, val interface{}) smap.Interface {
+	d := val.(*Socket)
+	d.Setter = smap.NewSetter(id, nil)
+	return d
 }
 
 func newSockets() *sockets {
-	s := &sockets{dict: cache.New(1024)}
-	s.dict.NewSetter = newSocketSetter
+	s := &sockets{dict: smap.New(1024)}
+	s.dict.NewSetter = newSetter
 	return s
 }
 
 type sockets struct {
-	dict *cache.Cache
+	dict *smap.Array
 }
 
 func (this *sockets) Len() int {
@@ -45,7 +47,7 @@ func (this *sockets) Socket(id uint64) (s *Socket, ok bool) {
 	return
 }
 func (this *sockets) Range(callback func(socket *Socket) bool) {
-	this.dict.Range(func(v cache.Dataset) bool {
+	this.dict.Range(func(v smap.Interface) bool {
 		if s, ok := v.(*Socket); ok {
 			return callback(s)
 		}
@@ -54,7 +56,7 @@ func (this *sockets) Range(callback func(socket *Socket) bool) {
 }
 
 func (this *sockets) Push(socket *Socket) uint64 {
-	return this.dict.Push(socket)
+	return this.dict.Push(socket).Id()
 }
 
 func (this *sockets) remove(socket *Socket) {

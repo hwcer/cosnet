@@ -2,7 +2,7 @@ package cosnet
 
 import (
 	"context"
-	"github.com/hwcer/cosgo/storage/cache"
+	"github.com/hwcer/cosgo/smap"
 	"github.com/hwcer/cosgo/utils"
 	"net"
 	"time"
@@ -54,7 +54,7 @@ func (this *Cosnet) heartbeat(ctx context.Context) {
 	}
 }
 func (this *Cosnet) doHeartbeat() {
-	this.Sockets.dict.Range(func(v cache.Dataset) bool {
+	this.Sockets.dict.Range(func(v smap.Interface) bool {
 		socket := v.(*Socket)
 		socket.Heartbeat()
 		this.Emit(EventTypeHeartbeat, socket)
@@ -77,7 +77,6 @@ func (this *Cosnet) Close(timeout time.Duration) error {
 func (this *Cosnet) New(conn net.Conn, netType NetType) (sock *Socket, err error) {
 	sock = &Socket{conn: conn, cosnet: this, netType: netType}
 	sock.cwrite = make(chan *Message, Options.WriteChanSize)
-	sock.Data = *cache.NewData()
 	err = sock.start()
 	if err == nil {
 		this.Sockets.Push(sock)

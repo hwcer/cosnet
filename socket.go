@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/golang/protobuf/proto"
-	"github.com/hwcer/cosgo/library/logger"
-	"github.com/hwcer/cosgo/storage/cache"
+	"github.com/hwcer/cosgo/logger"
+	"github.com/hwcer/cosgo/smap"
 	"io"
 	"net"
 	"sync/atomic"
@@ -19,6 +19,7 @@ const (
 
 //Socket 基础网络连接
 type Socket struct {
+	*smap.Setter
 	conn      net.Conn
 	stop      chan struct{} //stop
 	cwrite    chan *Message //写入通道,仅仅强制关闭的会被CLOSE
@@ -26,7 +27,6 @@ type Socket struct {
 	netType   NetType       //网络连接类型
 	cosnet    *Cosnet
 	heartbeat uint16 //heartbeat >=timeout 时被标记为超时
-	cache.Data
 }
 
 func (this *Socket) emit(e EventType) {
