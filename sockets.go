@@ -4,50 +4,44 @@ import (
 	"github.com/hwcer/cosgo/smap"
 )
 
-func newSetter(id uint64, val interface{}) smap.Interface {
+func NewSetter(id smap.MID, val interface{}) smap.Setter {
 	d := val.(*Socket)
-	d.Setter = smap.NewSetter(id, nil)
+	d.Data = smap.NewData(id, nil)
 	return d
 }
 
-func newSockets() *sockets {
-	s := &sockets{dict: smap.New(1024)}
-	s.dict.NewSetter = newSetter
+func NewSockets() *Sockets {
+	i := &Sockets{Array: smap.New(1024)}
+	i.Array.NewSetter = NewSetter
+	return i
+}
+
+type Sockets struct {
+	*smap.Array
+}
+
+func (this *Sockets) Len() int {
+	return this.Array.Size()
+}
+
+func (this *Sockets) Socket(id smap.MID) *Socket {
+	v, ok := this.Array.Get(id)
+	if !ok {
+		return nil
+	}
+	s, _ := v.(*Socket)
 	return s
 }
-
-type sockets struct {
-	dict *smap.Array
-}
-
-func (this *sockets) Len() int {
-	return this.dict.Size()
-}
-
-func (this *sockets) Player(id uint64) (p *player, ok bool) {
-	var s *Socket
-	if s, ok = this.Socket(id); !ok {
-		return
+func (this *Sockets) Player(id smap.MID) *Player {
+	s := this.Socket(id)
+	if s != nil {
+		return s.Player()
 	}
-	v := s.Get()
-	if v != nil {
-		p, ok = v.(*player)
-	} else {
-		ok = false
-	}
-	return
+	return nil
 }
 
-func (this *sockets) Socket(id uint64) (s *Socket, ok bool) {
-	var v interface{}
-	if v, ok = this.dict.Get(id); !ok {
-		return
-	}
-	s, ok = v.(*Socket)
-	return
-}
-func (this *sockets) Range(callback func(socket *Socket) bool) {
-	this.dict.Range(func(v smap.Interface) bool {
+func (this *Sockets) Range(callback func(socket *Socket) bool) {
+	this.Array.Range(func(v smap.Setter) bool {
 		if s, ok := v.(*Socket); ok {
 			return callback(s)
 		}
@@ -55,10 +49,12 @@ func (this *sockets) Range(callback func(socket *Socket) bool) {
 	})
 }
 
-func (this *sockets) Push(socket *Socket) uint64 {
-	return this.dict.Push(socket).Id()
+func (this *Sockets) Create(socket *Socket) smap.Setter {
+	return this.Array.Create(socket)
 }
 
-func (this *sockets) remove(socket *Socket) {
-	this.dict.Delete(socket.Id())
+func (this *Sockets) Remove(socket *Socket) {
+	if socket != nil {
+		this.Array.Delete(socket.Id())
+	}
 }

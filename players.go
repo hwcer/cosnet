@@ -5,95 +5,117 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
-func newPlayers() *players {
-	return &players{}
+var (
+	ErrAuthDataExist   = errors.New("authenticated")
+	ErrAuthDataIllegal = errors.New("authentication data illegal")
+
+	ErrReconnectSecretIllegal = errors.New("reconnect secret illegal")
+	ErrReconnectPlayerEmpty   = errors.New("reconnect Player not exist")
+	ErrReconnectSecretError   = errors.New("reconnect secret error")
+	ErrReconnectDisabled      = errors.New("reconnect disabled")
+)
+
+// Players 登录之后生成 player数据
+func NewPlayers() *Players {
+	return &Players{}
 }
 
-type player struct {
-	Id     string
-	Data   interface{} //用户数据
-	Socket *Socket
+type Player struct {
+	uuid   string
+	data   interface{} //用户数据
+	secret string      //短信重连秘钥
 	mutex  sync.Mutex
+	socket *Socket
 }
 
-type players struct {
-	dict sync.Map
+type Players struct {
+	dict   sync.Map
+	length int32
 }
 
-//replace 顶号
-func (this *player) replace(socket *Socket) {
-	old := this.Socket
-	this.Socket = socket
-	if old.status == StatusTypeNone {
+// replace 顶号
+func (this *Player) replace(socket *Socket) {
+	old := this.socket
+	this.socket = socket
+	if old.status == StatusTypeConnect {
 		old.emit(EventTypeReplaced)
 		old.Close()
 	}
 	return
 }
-func (this *players) Len() (r int) {
-	this.dict.Range(func(key, value interface{}) bool {
-		r++
-		return true
-	})
-	return
+
+func (this *Player) Socket() *Socket {
+	return this.socket
 }
 
-func (this *players) Player(id string) (p *player, ok bool) {
-	var v interface{}
-	if v, ok = this.dict.Load(id); !ok {
-		return
+// Len 在线用户
+func (this *Players) Len() (r int32) {
+	return this.length
+}
+
+func (this *Players) Player(uuid string) *Player {
+	v, ok := this.dict.Load(uuid)
+	if !ok {
+		return nil
 	}
-	p, ok = v.(*player)
-	return
+	p, _ := v.(*Player)
+	return p
 }
 
-func (this *players) Socket(id string) (s *Socket, ok bool) {
-	var p *player
-	if p, ok = this.Player(id); !ok {
-		return
+func (this *Players) Socket(uuid string) *Socket {
+	p := this.Player(uuid)
+	if p != nil {
+		return p.socket
 	}
-	s = p.Socket
-	return
+	return nil
 }
 
-func (this *players) Range(callback func(*player) bool) {
+func (this *Players) Range(callback func(*Player) bool) {
 	this.dict.Range(func(k, v interface{}) bool {
-		if p, ok := v.(*player); ok {
+		if p, ok := v.(*Player); ok {
 			return callback(p)
 		}
 		return true
 	})
 }
 
-func (this *players) remove(socket *Socket) {
-	if Options.SocketReconnectTime == 0 || !socket.Authenticated() {
+func (this *Players) Remove(player *Player) {
+	if player == nil {
 		return
 	}
-	v := socket.Get()
-	if v == nil {
-		return
-	}
-	p, ok := v.(*player)
-	if !ok {
-		return
-	}
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	if p.Socket.Id() == socket.Id() {
-		this.dict.Delete(p.Id)
-	}
+	this.dict.Delete(player.uuid)
 }
 
-var (
-	ErrAuthDataExist   = errors.New("authenticated")
-	ErrAuthDataIllegal = errors.New("authentication data illegal")
-)
+func (this *Players) disconnect(socket *Socket) {
+	atomic.AddInt32(&this.length, -1)
+}
 
-//Authentication 身份认证
+func (this *Players) reconnect(socket *Socket, uuid, secret string) error {
+	player := this.Player(uuid)
+	if player == nil {
+		return ErrReconnectPlayerEmpty
+	}
+	player.mutex.Lock()
+	defer player.mutex.Unlock()
+	if secret != player.secret {
+		return ErrReconnectSecretError
+	}
+	if player.socket != nil && player.socket.cwrite != nil {
+		player.socket.cwrite, socket.cwrite = socket.cwrite, player.socket.cwrite
+	}
+	player.replace(socket)
+	socket.Set(player)
+	atomic.AddInt32(&this.length, 1)
+	return nil
+}
+
+// Authentication 身份认证
 // secret 断线重连需要使用的秘钥,需要使用协议发送给客户端
-func (this *Socket) Authentication(id string, data interface{}) (secret string, err error) {
+func (this *Socket) Authentication(uuid string, data interface{}) (secret string, err error) {
 	if this.Authenticated() {
 		return "", ErrAuthDataExist
 	}
@@ -102,34 +124,30 @@ func (this *Socket) Authentication(id string, data interface{}) (secret string, 
 		return
 	}
 
-	p := &player{Id: id, Data: data, Socket: this}
+	p := &Player{uuid: uuid, data: data, socket: this}
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	if v, loaded := this.cosnet.Players.dict.LoadOrStore(id, p); loaded {
+	players := this.cosnet.Players
+	if v, loaded := players.dict.LoadOrStore(uuid, p); loaded {
 		var ok bool
-		if p, ok = v.(*player); !ok {
+		if p, ok = v.(*Player); !ok {
 			return "", ErrAuthDataIllegal
 		}
 		p.mutex.Lock()
 		defer p.mutex.Unlock()
 		p.replace(this)
+	} else {
+		p.secret = strconv.FormatInt(time.Now().Unix(), 32)
+		atomic.AddInt32(&players.length, 1)
 	}
-	this.Set(p)
 
-	k := strconv.FormatUint(this.Id(), 32)
-	secret = strings.Join([]string{k, id}, "x")
+	this.Set(p)
+	secret = strings.Join([]string{p.secret, uuid}, "x")
 	this.emit(EventTypeAuthentication)
 	return
 }
 
-var (
-	ErrReconnectSecretIllegal = errors.New("reconnect secret illegal")
-	ErrReconnectPlayerEmpty   = errors.New("reconnect player not exist")
-	ErrReconnectSecretError   = errors.New("reconnect secret error")
-	ErrReconnectDisabled      = errors.New("reconnect disabled")
-)
-
-//Reconnect 断线重连,secret为Authentication时产生的
+// Reconnect 断线重连,secret为Authentication时产生的
 func (this *Socket) Reconnect(secret string) error {
 	if this.Authenticated() {
 		return ErrAuthDataExist
@@ -141,19 +159,9 @@ func (this *Socket) Reconnect(secret string) error {
 	if index < 0 || index >= len(secret) {
 		return ErrReconnectSecretIllegal
 	}
-	id := secret[index+1:]
-	p, ok := this.cosnet.Players.Player(id)
-	if !ok {
-		return ErrReconnectPlayerEmpty
+	if err := this.cosnet.Players.reconnect(this, secret[index+1:], secret[0:index]); err != nil {
+		return err
 	}
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	if secret[0:index] != strconv.FormatUint(p.Socket.Id(), 32) {
-		return ErrReconnectSecretError
-	}
-	p.Socket.cwrite, this.cwrite = this.cwrite, p.Socket.cwrite
-	p.replace(this)
-	this.Set(p)
 	this.emit(EventTypeReconnected)
 	return nil
 }

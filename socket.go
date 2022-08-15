@@ -12,28 +12,28 @@ import (
 )
 
 const (
-	StatusTypeNone    = 0
-	StatusTypeOffline = 1
-	StatusTypeRemoved = 2
+	StatusTypeConnect    = 0
+	StatusTypeDisconnect = 1
+	StatusTypeDestroying = 2
 )
 
-//Socket 基础网络连接
+// Socket 基础网络连接
 type Socket struct {
-	*smap.Setter
+	*smap.Data
 	conn      net.Conn
 	stop      chan struct{} //stop
 	cwrite    chan *Message //写入通道,仅仅强制关闭的会被CLOSE
 	status    int32         //0-正常，1-断开，2-强制关闭
 	netType   NetType       //网络连接类型
-	cosnet    *Cosnet
-	heartbeat uint16 //heartbeat >=timeout 时被标记为超时
+	cosnet    *Cosnet       //cosnet
+	heartbeat uint16        //heartbeat >=timeout 时被标记为超时
 }
 
 func (this *Socket) emit(e EventType) {
 	this.cosnet.Emit(e, this)
 }
 
-//start 启动工作进程
+// start 启动工作进程
 func (this *Socket) start() error {
 	this.stop = make(chan struct{})
 	this.cosnet.scc.CGO(this.readMsg)
@@ -41,13 +41,14 @@ func (this *Socket) start() error {
 	return nil
 }
 
-func (this *Socket) close() {
+func (this *Socket) disconnect() {
 	select {
 	case <-this.stop:
 	default:
 		close(this.stop)
+		this.emit(EventTypeDisconnect)
 		_ = this.conn.Close()
-		if atomic.CompareAndSwapInt32(&this.status, StatusTypeNone, StatusTypeOffline) {
+		if atomic.CompareAndSwapInt32(&this.status, StatusTypeConnect, StatusTypeDisconnect) {
 			this.KeepAlive()
 		}
 	}
@@ -58,7 +59,7 @@ func (this *Socket) close() {
 //	return this.alive
 //}
 
-//Close 强制关闭,无法重连
+// Close 强制关闭,无法重连
 func (this *Socket) Close(msg ...*Message) {
 	defer func() {
 		_ = recover()
@@ -66,8 +67,8 @@ func (this *Socket) Close(msg ...*Message) {
 	for _, m := range msg {
 		this.Write(m)
 	}
-	this.status = StatusTypeRemoved
-	close(this.cwrite)
+	atomic.StoreInt32(&this.status, StatusTypeDestroying)
+	//close(this.cwrite)
 }
 
 func (this *Socket) Status() int32 {
@@ -77,29 +78,41 @@ func (this *Socket) NetType() NetType {
 	return this.netType
 }
 
-//Authenticated 是否身份认证
+func (this *Socket) Player() *Player {
+	v := this.Data.Get()
+	if v == nil {
+		return nil
+	}
+	p, _ := v.(*Player)
+	return p
+}
+
+// Authenticated 是否身份认证
 func (this *Socket) Authenticated() bool {
 	return this.Get() != nil
 }
 
-//Heartbeat 每一次Heartbeat() heartbeat计数加1
+// Heartbeat 每一次Heartbeat() heartbeat计数加1
 func (this *Socket) Heartbeat() {
 	this.heartbeat += Options.SocketHeartbeat
 	switch this.status {
-	case StatusTypeOffline:
+	case StatusTypeDisconnect:
 		if Options.SocketReconnectTime == 0 || this.heartbeat > Options.SocketReconnectTime {
-			this.cosnet.remove(this)
+			this.cosnet.destroy(this)
 		}
-	case StatusTypeRemoved:
-		this.cosnet.remove(this)
+	case StatusTypeDestroying:
+		if len(this.cwrite) == 0 || this.heartbeat >= Options.SocketDestroyingTime {
+			this.disconnect()
+			this.cosnet.destroy(this)
+		}
 	default:
 		if this.heartbeat >= Options.SocketConnectTime {
-			this.close()
+			this.disconnect()
 		}
 	}
 }
 
-//KeepAlive 任何行为都清空heartbeat
+// KeepAlive 任何行为都清空heartbeat
 func (this *Socket) KeepAlive() {
 	this.heartbeat = 0
 }
@@ -117,12 +130,12 @@ func (this *Socket) RemoteAddr() net.Addr {
 	return nil
 }
 
-//Write 外部写入消息
+// Write 外部写入消息
 func (this *Socket) Write(m *Message) (re bool) {
 	defer func() {
 		_ = recover()
 	}()
-	if this.status == StatusTypeRemoved || m == nil {
+	if m == nil {
 		return false
 	}
 	select {
@@ -130,12 +143,12 @@ func (this *Socket) Write(m *Message) (re bool) {
 		re = true
 	default:
 		logger.Debug("通道已满无法写消息:%v", this.Id())
-		this.close() //TODO 重试
+		this.disconnect() //TODO 重试
 	}
 	return
 }
 
-//Json 发送Json数据
+// Json 发送Json数据
 func (this *Socket) Json(code uint16, index uint16, data interface{}) (re bool) {
 	msg := &Message{Header: NewHeader(code, index)}
 	if data != nil {
@@ -147,7 +160,7 @@ func (this *Socket) Json(code uint16, index uint16, data interface{}) (re bool) 
 	return this.Write(msg)
 }
 
-//Protobuf 发送Protobuf
+// Protobuf 发送Protobuf
 func (this *Socket) Protobuf(code uint16, index uint16, data proto.Message) (re bool) {
 	msg := &Message{Header: NewHeader(code, index)}
 	if msg != nil {
@@ -168,12 +181,12 @@ func (this *Socket) processMsg(socket *Socket, msg *Message) {
 	err := this.cosnet.call(socket, msg)
 	if err != nil {
 		logger.Error("processMsg:%v", err)
-		socket.close()
+		socket.disconnect()
 	}
 }
 
 func (this *Socket) readMsg(ctx context.Context) {
-	defer this.close()
+	defer this.disconnect()
 	var err error
 	head := make([]byte, HeaderSize)
 	for {
@@ -202,14 +215,14 @@ func (this *Socket) readMsg(ctx context.Context) {
 }
 
 func (this *Socket) writeMsg(ctx context.Context) {
-	defer this.close()
+	defer this.disconnect()
 	var msg *Message
 	for {
 		select {
 		case <-ctx.Done():
-			return //关闭服务器
+			return
 		case <-this.stop:
-			return //关闭SOCKET
+			return
 		case msg = <-this.cwrite:
 			if !this.writeMsgTrue(msg) {
 				return

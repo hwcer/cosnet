@@ -36,7 +36,7 @@ func read() {
 		select {
 		case x := <-ch:
 			if x == 0 {
-				fmt.Printf("close\n")
+				fmt.Printf("disconnect\n")
 				return
 			} else {
 				fmt.Printf("REV:%v\n", x)

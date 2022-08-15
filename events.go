@@ -1,6 +1,6 @@
 package cosnet
 
-//EventType 事件类型
+// EventType 事件类型
 type EventType uint8
 
 const (
@@ -10,6 +10,7 @@ const (
 	EventTypeAuthentication                      //身份认证
 	EventTypeReplaced                            //被顶号
 	EventTypeReconnected                         //重登录
+	EventTypeDestroy                             //销毁所有信息
 )
 
 type EventsFunc func(*Socket)
