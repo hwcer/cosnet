@@ -1,7 +1,9 @@
-package cosnet
+package sockets
+
+import "encoding/json"
 
 var Options = struct {
-	MaxDataSize          int32  //包体最大长度
+	MaxDataSize          uint32 //包体最大长度
 	WriteChanSize        int32  //写通道缓存
 	ConnectMaxSize       int32  //连接人数
 	SocketHeartbeat      uint16 //(MS)服务器心跳,用来检测玩家僵尸连接
@@ -13,6 +15,9 @@ var Options = struct {
 	AutoCompressSize    uint32 //自动压缩
 	ClientReconnectMax  uint16 //断线重连最大尝试次数
 	ClientReconnectTime uint16 //断线重连每次等待时间(MS) ClientReconnectTime * ReconnectNum
+
+	MessageMarshal   func(i interface{}) ([]byte, error) //默认消息解码
+	MessageUnmarshal func(b []byte, i interface{}) error //默认消息编码
 }{
 	MaxDataSize:    1024 * 1024,
 	WriteChanSize:  500,
@@ -25,4 +30,7 @@ var Options = struct {
 
 	ClientReconnectMax:  1000,
 	ClientReconnectTime: 5000,
+
+	MessageMarshal:   json.Marshal,
+	MessageUnmarshal: json.Unmarshal,
 }

@@ -1,11 +1,10 @@
-package cosnet
+package sockets
 
 import (
 	"context"
-	"encoding/json"
-	"github.com/golang/protobuf/proto"
 	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/smap"
+	"github.com/hwcer/cosgo/utils"
 	"io"
 	"net"
 	"sync/atomic"
@@ -17,30 +16,46 @@ const (
 	StatusTypeDestroying = 2
 )
 
+func NewSocket(engine *Engine, conn net.Conn, netType NetType) *Socket {
+	socket := &Socket{conn: conn, engine: engine, netType: netType}
+	socket.stop = make(chan struct{})
+	socket.cwrite = make(chan Message, Options.WriteChanSize)
+	socket.engine.scc.CGO(socket.readMsg)
+	socket.engine.scc.CGO(socket.writeMsg)
+	return socket
+}
+
 // Socket 基础网络连接
 type Socket struct {
 	*smap.Data
 	conn      net.Conn
 	stop      chan struct{} //stop
-	cwrite    chan *Message //写入通道,仅仅强制关闭的会被CLOSE
+	engine    *Engine       //Engine
+	cwrite    chan Message  //写入通道,仅仅强制关闭的会被CLOSE
 	status    int32         //0-正常，1-断开，2-强制关闭
 	netType   NetType       //网络连接类型
-	cosnet    *Cosnet       //cosnet
 	heartbeat uint16        //heartbeat >=timeout 时被标记为超时
 }
 
-func (this *Socket) emit(e EventType) {
-	this.cosnet.Emit(e, this)
+func (this *Socket) emit(e EventType) bool {
+	return this.engine.Emit(e, this)
 }
 
-// start 启动工作进程
-func (this *Socket) start() error {
-	this.stop = make(chan struct{})
-	this.cosnet.scc.CGO(this.readMsg)
-	this.cosnet.scc.CGO(this.writeMsg)
-	return nil
+// destroy 彻底销毁,移除资源
+func (this *Socket) destroy() {
+	if this.status != StatusTypeDestroying {
+		atomic.StoreInt32(&this.status, StatusTypeDestroying)
+	}
+	if this.cwrite != nil {
+		utils.Try(func() {
+			close(this.cwrite)
+		})
+	}
+	this.engine.Remove(this.Id())
+	this.emit(EventTypeDestroyed)
 }
 
+// disconnect 掉线,包含网络超时，网络错误
 func (this *Socket) disconnect() {
 	select {
 	case <-this.stop:
@@ -60,7 +75,7 @@ func (this *Socket) disconnect() {
 //}
 
 // Close 强制关闭,无法重连
-func (this *Socket) Close(msg ...*Message) {
+func (this *Socket) Close(msg ...Message) {
 	defer func() {
 		_ = recover()
 	}()
@@ -68,7 +83,10 @@ func (this *Socket) Close(msg ...*Message) {
 		this.Write(m)
 	}
 	atomic.StoreInt32(&this.status, StatusTypeDestroying)
-	//close(this.cwrite)
+}
+
+func (this *Socket) Errorf(format interface{}, args ...interface{}) bool {
+	return this.engine.Errorf(this, format, args...)
 }
 
 func (this *Socket) Status() int32 {
@@ -98,12 +116,11 @@ func (this *Socket) Heartbeat() {
 	switch this.status {
 	case StatusTypeDisconnect:
 		if Options.SocketReconnectTime == 0 || this.heartbeat > Options.SocketReconnectTime {
-			this.cosnet.destroy(this)
+			this.destroy()
 		}
 	case StatusTypeDestroying:
 		if len(this.cwrite) == 0 || this.heartbeat >= Options.SocketDestroyingTime {
-			this.disconnect()
-			this.cosnet.destroy(this)
+			this.destroy()
 		}
 	default:
 		if this.heartbeat >= Options.SocketConnectTime {
@@ -131,11 +148,13 @@ func (this *Socket) RemoteAddr() net.Addr {
 }
 
 // Write 外部写入消息
-func (this *Socket) Write(m *Message) (re bool) {
+func (this *Socket) Write(m Message) (re bool) {
 	defer func() {
-		_ = recover()
+		if e := recover(); e != nil {
+			re = this.Errorf(e)
+		}
 	}()
-	if m == nil {
+	if m == nil || this.cwrite == nil || this.status == StatusTypeDestroying {
 		return false
 	}
 	select {
@@ -143,44 +162,15 @@ func (this *Socket) Write(m *Message) (re bool) {
 		re = true
 	default:
 		logger.Debug("通道已满无法写消息:%v", this.Id())
-		this.disconnect() //TODO 重试
+		this.Close()
 	}
 	return
 }
 
-// Json 发送Json数据
-func (this *Socket) Json(code uint16, index uint16, data interface{}) (re bool) {
-	msg := &Message{Header: NewHeader(code, index)}
-	if data != nil {
-		if err := json.NewEncoder(msg).Encode(data); err != nil {
-			logger.Debug("socket Json error:%v", err)
-			return
-		}
-	}
-	return this.Write(msg)
-}
-
-// Protobuf 发送Protobuf
-func (this *Socket) Protobuf(code uint16, index uint16, data proto.Message) (re bool) {
-	msg := &Message{Header: NewHeader(code, index)}
-	if msg != nil {
-		var err error
-		if msg.data, err = proto.Marshal(data); err != nil {
-			logger.Debug("socket Protobuf error; Code:%v,err:%v", code, err)
-			return false
-		} else {
-			msg.Header.size = int32(len(msg.data))
-		}
-	}
-	return this.Write(msg)
-}
-
-func (this *Socket) processMsg(socket *Socket, msg *Message) {
+func (this *Socket) processMsg(socket *Socket, msg Message) {
 	this.KeepAlive()
 	//logger.Debug("processMsg:%+v", msg)
-	err := this.cosnet.call(socket, msg)
-	if err != nil {
-		logger.Error("processMsg:%v", err)
+	if !this.engine.Handler.Call(socket, msg) {
 		socket.disconnect()
 	}
 }
@@ -188,23 +178,22 @@ func (this *Socket) processMsg(socket *Socket, msg *Message) {
 func (this *Socket) readMsg(ctx context.Context) {
 	defer this.disconnect()
 	var err error
-	head := make([]byte, HeaderSize)
+	head := make([]byte, this.engine.Handler.Head())
 	for {
 		_, err = io.ReadFull(this.conn, head)
 		if err != nil {
 			return
 		}
 		//logger.Debug("READ HEAD:%v", head)
-		msg := &Message{Header: &Header{}}
-		err = msg.Header.Parse(head)
+		msg := this.engine.Handler.Acquire()
+		err = msg.Parse(head)
 		if err != nil {
 			logger.Debug("READ HEAD ERR:%v", err)
 			return
 		}
 		//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
-		if msg.Header.size > 0 {
-			msg.data = make([]byte, msg.Header.size)
-			_, err = io.ReadFull(this.conn, msg.data)
+		if msg.Size() > 0 {
+			_, err = msg.Write(this.conn)
 			if err != nil {
 				logger.Debug("READ BODY ERR:%v", err)
 				return
@@ -216,7 +205,7 @@ func (this *Socket) readMsg(ctx context.Context) {
 
 func (this *Socket) writeMsg(ctx context.Context) {
 	defer this.disconnect()
-	var msg *Message
+	var msg Message
 	for {
 		select {
 		case <-ctx.Done():
@@ -231,15 +220,13 @@ func (this *Socket) writeMsg(ctx context.Context) {
 	}
 }
 
-func (this *Socket) writeMsgTrue(msg *Message) bool {
-	if msg == nil {
-		return false
-	}
+func (this *Socket) writeMsgTrue(msg Message) bool {
+	defer msg.Release()
 	data, err := msg.Bytes()
 	if err != nil {
-		return false
+		return this.Errorf(err)
 	}
-	logger.Debug("write HEAD:%+v, DATA:%v", *msg.Header, data)
+	//logger.Debug("socket write error,code:%v, data:%v", msg.Code(), msg.Data())
 	var n int
 	writeCount := 0
 	for writeCount < len(data) {
