@@ -15,14 +15,14 @@ func New(ctx context.Context, h sockets.Handler) *Cosnet {
 		h = handler.New()
 	}
 	i := &Cosnet{
-		Engine: sockets.New(ctx, h),
+		Agents: sockets.New(ctx, h),
 	}
 	return i
 }
 
 // Cosnet socket管理器
 type Cosnet struct {
-	*sockets.Engine
+	*sockets.Agents
 }
 
 // Listen 启动柜服务器,监听address
@@ -33,7 +33,7 @@ func (this *Cosnet) Listen(address string) (listener net.Listener, err error) {
 	}
 	switch strings.ToLower(addr.Scheme) {
 	case "tcp":
-		listener, err = NewTcpServer(this.Engine, addr.String())
+		listener, err = NewTcpServer(this.Agents, addr.String())
 	//case "udp":
 	//TODO
 	default:
@@ -44,5 +44,5 @@ func (this *Cosnet) Listen(address string) (listener net.Listener, err error) {
 
 // Connect 连接服务器address
 func (this *Cosnet) Connect(address string) (socket *sockets.Socket, err error) {
-	return cliConnect(this.Engine, address)
+	return cliConnect(this.Agents, address)
 }

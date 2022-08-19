@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"errors"
 	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/sockets"
@@ -54,7 +55,7 @@ func (this *Message) Parse(head []byte) error {
 
 // Bytes 生成二进制文件
 func (this *Message) Bytes() (b []byte, err error) {
-	var buffer *bytes.Buffer
+	buffer := &bytes.Buffer{}
 	if err = utils.IntToBuffer(buffer, this.size); err != nil {
 		return
 	}
@@ -81,19 +82,25 @@ func (this *Message) Write(r io.Reader) (n int, err error) {
 
 // Marshal 将一个对象放入Message.data
 func (this *Message) Marshal(code, body interface{}) error {
-	b := bytes.NewBuffer(this.data[:0])
-	if n, err := this.marshal(b, code); err != nil {
-		return err
-	} else {
+	buffer := bytes.NewBuffer(this.data[:0])
+	path, ok := code.(string)
+	if !ok || path == "" {
+		return errors.New("code must be string")
+	}
+	if n, err := buffer.WriteString(path); err == nil {
 		this.code = uint16(n)
 		this.size = uint32(n)
-	}
-	if n, err := this.marshal(b, body); err != nil {
-		return err
 	} else {
+		return err
+	}
+	data, err := sockets.Options.MessageMarshal(body)
+	if err != nil {
+		return err
+	}
+	if n, e := buffer.Write(data); e == nil {
 		this.size += uint32(n)
 	}
-	this.data = b.Bytes()
+	this.data = buffer.Bytes()
 	return nil
 }
 

@@ -20,11 +20,11 @@ const (
 
 type EventsFunc func(*Socket, interface{}) bool
 
-func (this *Engine) On(e EventType, f EventsFunc) {
+func (this *Agents) On(e EventType, f EventsFunc) {
 	this.listener[e] = append(this.listener[e], f)
 }
 
-func (this *Engine) Emit(e EventType, s *Socket, attach ...interface{}) (r bool) {
+func (this *Agents) Emit(e EventType, s *Socket, attach ...interface{}) (r bool) {
 	var v interface{}
 	if len(attach) > 0 {
 		v = attach[0]
@@ -38,7 +38,7 @@ func (this *Engine) Emit(e EventType, s *Socket, attach ...interface{}) (r bool)
 }
 
 // Errorf 抛出一个异常
-func (this *Engine) Errorf(s *Socket, format interface{}, args ...interface{}) (r bool) {
+func (this *Agents) Errorf(s *Socket, format interface{}, args ...interface{}) (r bool) {
 	if len(args) == 0 {
 		return this.Emit(EventTypeError, s, format)
 	}

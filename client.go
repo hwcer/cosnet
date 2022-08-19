@@ -10,12 +10,12 @@ import (
 )
 
 // cliConnect create client create
-func cliConnect(engine *sockets.Engine, address string) (*sockets.Socket, error) {
+func cliConnect(agents *sockets.Agents, address string) (*sockets.Socket, error) {
 	conn, err := tryConnect(address)
 	if err != nil {
 		return nil, err
 	}
-	return engine.New(conn, sockets.NetTypeClient)
+	return agents.New(conn, sockets.NetTypeClient)
 }
 
 func tryConnect(s string) (net.Conn, error) {
@@ -29,7 +29,7 @@ func tryConnect(s string) (net.Conn, error) {
 		if err == nil {
 			return conn, nil
 		} else {
-			fmt.Printf("%v create error:%v\n", try, err)
+			fmt.Printf("%v %v\n", try, err)
 			time.Sleep(time.Duration(sockets.Options.ClientReconnectTime))
 		}
 	}

@@ -16,12 +16,12 @@ const (
 	StatusTypeDestroying = 2
 )
 
-func NewSocket(engine *Engine, conn net.Conn, netType NetType) *Socket {
-	socket := &Socket{conn: conn, engine: engine, netType: netType}
+func NewSocket(engine *Agents, conn net.Conn, netType NetType) *Socket {
+	socket := &Socket{conn: conn, agents: engine, netType: netType}
 	socket.stop = make(chan struct{})
 	socket.cwrite = make(chan Message, Options.WriteChanSize)
-	socket.engine.scc.CGO(socket.readMsg)
-	socket.engine.scc.CGO(socket.writeMsg)
+	socket.agents.scc.CGO(socket.readMsg)
+	socket.agents.scc.CGO(socket.writeMsg)
 	return socket
 }
 
@@ -30,7 +30,7 @@ type Socket struct {
 	*smap.Data
 	conn      net.Conn
 	stop      chan struct{} //stop
-	engine    *Engine       //Engine
+	agents    *Agents       //Agents
 	cwrite    chan Message  //写入通道,仅仅强制关闭的会被CLOSE
 	status    int32         //0-正常，1-断开，2-强制关闭
 	netType   NetType       //网络连接类型
@@ -38,7 +38,7 @@ type Socket struct {
 }
 
 func (this *Socket) emit(e EventType) bool {
-	return this.engine.Emit(e, this)
+	return this.agents.Emit(e, this)
 }
 
 // destroy 彻底销毁,移除资源
@@ -51,7 +51,7 @@ func (this *Socket) destroy() {
 			close(this.cwrite)
 		})
 	}
-	this.engine.Remove(this.Id())
+	this.agents.Remove(this.Id())
 	this.emit(EventTypeDestroyed)
 }
 
@@ -86,7 +86,7 @@ func (this *Socket) Close(msg ...Message) {
 }
 
 func (this *Socket) Errorf(format interface{}, args ...interface{}) bool {
-	return this.engine.Errorf(this, format, args...)
+	return this.agents.Errorf(this, format, args...)
 }
 
 func (this *Socket) Status() int32 {
@@ -105,8 +105,8 @@ func (this *Socket) Player() *Player {
 	return p
 }
 
-// Authenticated 是否身份认证
-func (this *Socket) Authenticated() bool {
+// Verified 是否身份认证
+func (this *Socket) Verified() bool {
 	return this.Get() != nil
 }
 
@@ -115,7 +115,7 @@ func (this *Socket) Heartbeat() {
 	this.heartbeat += Options.SocketHeartbeat
 	switch this.status {
 	case StatusTypeDisconnect:
-		if Options.SocketReconnectTime == 0 || this.heartbeat > Options.SocketReconnectTime {
+		if !this.Verified() || Options.SocketReconnectTime == 0 || this.heartbeat > Options.SocketReconnectTime {
 			this.destroy()
 		}
 	case StatusTypeDestroying:
@@ -170,7 +170,7 @@ func (this *Socket) Write(m Message) (re bool) {
 func (this *Socket) processMsg(socket *Socket, msg Message) {
 	this.KeepAlive()
 	//logger.Debug("processMsg:%+v", msg)
-	if !this.engine.Handler.Call(socket, msg) {
+	if !this.agents.Handler.Call(socket, msg) {
 		socket.disconnect()
 	}
 }
@@ -178,14 +178,14 @@ func (this *Socket) processMsg(socket *Socket, msg Message) {
 func (this *Socket) readMsg(ctx context.Context) {
 	defer this.disconnect()
 	var err error
-	head := make([]byte, this.engine.Handler.Head())
+	head := make([]byte, this.agents.Handler.Head())
 	for {
 		_, err = io.ReadFull(this.conn, head)
 		if err != nil {
 			return
 		}
 		//logger.Debug("READ HEAD:%v", head)
-		msg := this.engine.Handler.Acquire()
+		msg := this.agents.Handler.Acquire()
 		err = msg.Parse(head)
 		if err != nil {
 			logger.Debug("READ HEAD ERR:%v", err)

@@ -82,12 +82,17 @@ func (this *Handler) Acquire() sockets.Message {
 	return r
 }
 
+func (this *Handler) Register(i interface{}) error {
+	s := this.Registry.Service("")
+	return s.Register(i)
+}
+
 func (this *Handler) filter(s *registry.Service, pr, fn reflect.Value) bool {
 	if this.Filter != nil {
 		return this.Filter(s, pr, fn)
 	}
 	if !pr.IsValid() {
-		_, ok := fn.Interface().(RegistryMethod)
+		_, ok := fn.Interface().(func(socket *sockets.Socket, msg sockets.Message) interface{})
 		return ok
 	}
 	t := fn.Type()
@@ -102,7 +107,7 @@ func (this *Handler) filter(s *registry.Service, pr, fn reflect.Value) bool {
 
 func (this *Handler) caller(socket *sockets.Socket, msg sockets.Message, pr, fn reflect.Value) (reply interface{}, err error) {
 	if !pr.IsValid() {
-		f, _ := fn.Interface().(RegistryMethod)
+		f, _ := fn.Interface().(func(socket *sockets.Socket, msg sockets.Message) interface{})
 		reply = f(socket, msg)
 	} else if s, ok := pr.Interface().(RegistryHandle); ok {
 		reply = s.Caller(socket, msg, fn)

@@ -12,7 +12,7 @@ const (
 	NetTypeServer         = 2 //Server Listener
 )
 
-//type Engine interface {
+//type Agents interface {
 //	CGO(func(ctx context.Context))
 //	Emit(e EventType, s *Socket, attach ...interface{}) (r bool)
 //	Errorf(s *Socket, format interface{}, args ...interface{}) (r bool)
@@ -20,9 +20,10 @@ const (
 //}
 
 type Handler interface {
-	Head() int                  //Head size
-	Call(*Socket, Message) bool //执行消息,返回false会踢下线
-	Acquire() Message           //获取message
+	Head() int                    //Head size
+	Call(*Socket, Message) bool   //执行消息,返回false会踢下线
+	Acquire() Message             //获取message
+	Register(i interface{}) error //注册协议
 }
 
 type Message interface {

@@ -5,7 +5,7 @@ import (
 )
 
 // NewPlayers 登录之后生成 player数据
-func NewPlayers(engine *Engine) *Players {
+func NewPlayers(engine *Agents) *Players {
 	p := &Players{Map: sync.Map{}}
 	engine.On(EventTypeDestroyed, p.destroy)
 	return p
@@ -74,7 +74,7 @@ func (this *Players) Range(fn func(*Player) bool) {
 
 // Verify 身份认证,登录,TOKEN信息验证之后调用
 func (this *Socket) Verify(uuid string, data interface{}) (err error) {
-	if this.Authenticated() {
+	if this.Verified() {
 		return ErrAuthDataExist
 	}
 	if Options.SocketReconnectTime == 0 {
@@ -85,7 +85,7 @@ func (this *Socket) Verify(uuid string, data interface{}) (err error) {
 	player := &Player{uuid: uuid, data: data, socket: this}
 	player.mutex.Lock()
 	defer player.mutex.Unlock()
-	if v, loaded := this.engine.Players.Map.LoadOrStore(uuid, player); loaded {
+	if v, loaded := this.agents.Players.Map.LoadOrStore(uuid, player); loaded {
 		p, _ := v.(*Player)
 		err = this.reconnect(p, data)
 	} else {
@@ -101,7 +101,7 @@ func (this *Socket) reconnect(player *Player, data interface{}) error {
 	}
 	player.mutex.Lock()
 	defer player.mutex.Unlock()
-	if this.Authenticated() {
+	if this.Verified() {
 		return ErrAuthDataExist
 	}
 	player.data = data
