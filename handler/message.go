@@ -2,13 +2,12 @@ package handler
 
 import (
 	"bytes"
-	"errors"
 	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/sockets"
 	"io"
-	"sync"
-	"sync/atomic"
+	"net/url"
+	"strings"
 )
 
 // Message 默认使用路径模式集中注册协议
@@ -17,11 +16,10 @@ import (
 // data : path + body
 // path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
 type Message struct {
-	size  uint32 //数据BODY 4
-	code  uint16 //协议号  2
-	data  []byte //数据
-	pool  *sync.Pool
-	reset int32
+	pool int32  //防止外部数据随意放入对象池
+	size uint32 //数据BODY 4
+	code uint16 //协议号  2
+	data []byte //数据
 }
 
 // Size 包体总长
@@ -29,13 +27,23 @@ func (this *Message) Size() int {
 	return int(this.size)
 }
 
-// Code  (path)协议号、路径
-func (this *Message) Code() interface{} {
-	return string(this.data[0:this.code])
-}
-
 func (this *Message) Data() []byte {
 	return this.data
+}
+
+// Path 路径
+func (this *Message) Path() string {
+	path := string(this.data[0:this.code])
+	if i := strings.Index(path, "?"); i >= 0 {
+		path = path[0:i]
+	}
+	return path
+}
+func (this *Message) Query() (r url.Values) {
+	path := string(this.data[0:this.code])
+	i := strings.Index(path, "?")
+	r, _ = url.ParseQuery(path[i:])
+	return r
 }
 
 // Parse 解析二进制头并填充到对应字段
@@ -81,12 +89,8 @@ func (this *Message) Write(r io.Reader) (n int, err error) {
 }
 
 // Marshal 将一个对象放入Message.data
-func (this *Message) Marshal(code, body interface{}) error {
+func (this *Message) Marshal(path string, body interface{}) error {
 	buffer := bytes.NewBuffer(this.data[:0])
-	path, ok := code.(string)
-	if !ok || path == "" {
-		return errors.New("code must be string")
-	}
 	if n, err := buffer.WriteString(path); err == nil {
 		this.code = uint16(n)
 		this.size = uint32(n)
@@ -107,15 +111,6 @@ func (this *Message) Marshal(code, body interface{}) error {
 // Unmarshal 解析Message body
 func (this *Message) Unmarshal(i interface{}) error {
 	return sockets.Options.MessageUnmarshal(this.data[this.code:], i)
-}
-
-// Release 消息不再使用释放消息
-func (this *Message) Release() {
-	this.size = 0
-	this.code = 0
-	if this.pool != nil && atomic.CompareAndSwapInt32(&this.reset, 1, 0) {
-		this.pool.Put(this)
-	}
 }
 
 func (this *Message) marshal(b *bytes.Buffer, i interface{}) (int, error) {

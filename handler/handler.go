@@ -13,7 +13,7 @@ const HeadSize = 6
 func New() *Handler {
 	i := &Handler{pool: &sync.Pool{}}
 	i.pool.New = func() interface{} {
-		return &Message{pool: i.pool}
+		return &Message{}
 	}
 	opts := registry.NewOptions()
 	opts.Filter = i.filter
@@ -32,17 +32,18 @@ func (this *Handler) Head() int {
 	return HeadSize
 }
 
-func (this *Handler) Call(socket *sockets.Socket, msg sockets.Message) (r bool) {
+func (this *Handler) Handle(socket *sockets.Socket, i sockets.Message) (r bool) {
 	defer func() {
 		if err := recover(); err != nil {
 			r = socket.Errorf(err)
 		}
 	}()
-	code, ok := msg.Code().(string)
+	msg, ok := i.(*Message)
 	if !ok {
-		return socket.Errorf("Service not exist")
+		return socket.Errorf("message error")
 	}
-	urlPath := this.Registry.Clean(code)
+	path := msg.Path()
+	urlPath := this.Registry.Clean(path)
 	service, ok := this.Match(urlPath)
 	if !ok {
 		return socket.Errorf("Service not exist")
@@ -62,29 +63,37 @@ func (this *Handler) Call(socket *sockets.Socket, msg sockets.Message) (r bool) 
 		return socket.Errorf(err)
 	}
 	if reply != nil {
-		if err = msg.Marshal(code, reply); err != nil {
+		if err = msg.Marshal(path, reply); err != nil {
 			return socket.Errorf(err)
 		} else {
 			_ = socket.Write(msg)
 		}
 	} else {
-		msg.Release()
+		this.Release(msg)
 	}
-
 	return true
 }
 
 func (this *Handler) Acquire() sockets.Message {
 	r, _ := this.pool.Get().(*Message)
-	if r == nil || !atomic.CompareAndSwapInt32(&r.reset, 0, 1) {
+	if r == nil || !atomic.CompareAndSwapInt32(&r.pool, 0, 1) {
 		return this.Acquire()
 	}
 	return r
 }
 
+func (this *Handler) Release(i sockets.Message) {
+	msg, ok := i.(*Message)
+	if !ok {
+		return
+	}
+	if atomic.CompareAndSwapInt32(&msg.pool, 1, 0) {
+		this.pool.Put(msg)
+	}
+}
+
 func (this *Handler) Register(i interface{}) error {
-	s := this.Registry.Service("")
-	return s.Register(i)
+	return this.Registry.Register(i)
 }
 
 func (this *Handler) filter(s *registry.Service, pr, fn reflect.Value) bool {
@@ -92,7 +101,7 @@ func (this *Handler) filter(s *registry.Service, pr, fn reflect.Value) bool {
 		return this.Filter(s, pr, fn)
 	}
 	if !pr.IsValid() {
-		_, ok := fn.Interface().(func(socket *sockets.Socket, msg sockets.Message) interface{})
+		_, ok := fn.Interface().(func(socket *sockets.Socket, msg *Message) interface{})
 		return ok
 	}
 	t := fn.Type()
@@ -105,9 +114,9 @@ func (this *Handler) filter(s *registry.Service, pr, fn reflect.Value) bool {
 	return true
 }
 
-func (this *Handler) caller(socket *sockets.Socket, msg sockets.Message, pr, fn reflect.Value) (reply interface{}, err error) {
+func (this *Handler) caller(socket *sockets.Socket, msg *Message, pr, fn reflect.Value) (reply interface{}, err error) {
 	if !pr.IsValid() {
-		f, _ := fn.Interface().(func(socket *sockets.Socket, msg sockets.Message) interface{})
+		f, _ := fn.Interface().(func(socket *sockets.Socket, msg *Message) interface{})
 		reply = f(socket, msg)
 	} else if s, ok := pr.Interface().(RegistryHandle); ok {
 		reply = s.Caller(socket, msg, fn)

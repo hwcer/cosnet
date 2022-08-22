@@ -64,10 +64,6 @@ func (this *Agents) Range(fn func(socket *Socket) bool) {
 	})
 }
 
-func (this *Agents) Register(i interface{}) error {
-	return this.Handler.Register(i)
-}
-
 // heartbeat 启动协程定时清理无效用户
 func (this *Agents) heartbeat(ctx context.Context) {
 	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)

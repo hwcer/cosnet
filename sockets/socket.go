@@ -170,7 +170,7 @@ func (this *Socket) Write(m Message) (re bool) {
 func (this *Socket) processMsg(socket *Socket, msg Message) {
 	this.KeepAlive()
 	//logger.Debug("processMsg:%+v", msg)
-	if !this.agents.Handler.Call(socket, msg) {
+	if !this.agents.Handler.Handle(socket, msg) {
 		socket.disconnect()
 	}
 }
@@ -221,7 +221,7 @@ func (this *Socket) writeMsg(ctx context.Context) {
 }
 
 func (this *Socket) writeMsgTrue(msg Message) bool {
-	defer msg.Release()
+	defer this.agents.Handler.Release(msg)
 	data, err := msg.Bytes()
 	if err != nil {
 		return this.Errorf(err)

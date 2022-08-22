@@ -6,11 +6,15 @@ import (
 	"github.com/hwcer/cosnet"
 	"github.com/hwcer/cosnet/handler"
 	"github.com/hwcer/cosnet/sockets"
+	"github.com/spf13/pflag"
 )
 
 var server *cosnet.Cosnet
+var handle *handler.Handler
 
-var address = "tcp://0.0.0.0:3000"
+func init() {
+	pflag.String("address", "tcp://0.0.0.0:3000", "server address")
+}
 
 func main() {
 	app.Start(&module{ModuleDefault: app.ModuleDefault{Id: "client"}})
@@ -22,12 +26,14 @@ type module struct {
 }
 
 func (m *module) Start() error {
+	address := app.Config.GetString("address")
 	server = cosnet.New(app.SCC.Context, nil)
 	_, err := server.Connect(address)
 	if err != nil {
 		return err
 	}
-	_ = server.Register(ping)
+	handle = server.Handler.(*handler.Handler)
+	_ = handle.Register(ping)
 	server.On(sockets.EventTypeError, socketError)
 	server.On(sockets.EventTypeHeartbeat, socketHeartbeat)
 	server.On(sockets.EventTypeConnected, socketConnected)
@@ -62,16 +68,17 @@ func socketDisconnect(socket *sockets.Socket, _ interface{}) bool {
 
 func socketDestroyed(socket *sockets.Socket, _ interface{}) bool {
 	logger.Info("socket destroyed:%v", socket.Id())
+	address := app.Config.GetString("address")
 	_, _ = server.Connect(address) //重连
 	return true
 }
 
-func ping(socket *sockets.Socket, msg sockets.Message) interface{} {
+func ping(socket *sockets.Socket, msg *handler.Message) interface{} {
 	var v string
 	if err := msg.Unmarshal(&v); err != nil {
 		socket.Errorf(err)
 	} else {
-		logger.Info("收到回复:%v %v", msg.Code(), v)
+		logger.Info("收到回复:%v %v", msg.Path(), v)
 	}
 
 	return nil

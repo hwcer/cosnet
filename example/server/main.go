@@ -4,11 +4,17 @@ import (
 	"github.com/hwcer/cosgo/app"
 	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosnet"
+	"github.com/hwcer/cosnet/handler"
 	"github.com/hwcer/cosnet/sockets"
+	"github.com/spf13/pflag"
 )
 
 var server *cosnet.Cosnet
+var handle *handler.Handler
 
+func init() {
+	pflag.String("address", "tcp://0.0.0.0:3000", "server address")
+}
 func main() {
 	app.Start(&module{ModuleDefault: app.ModuleDefault{Id: "server"}})
 	app.WaitForSystemExit()
@@ -19,12 +25,14 @@ type module struct {
 }
 
 func (m *module) Start() error {
+	address := app.Config.GetString("address")
 	server = cosnet.New(app.SCC.Context, nil)
-	_, err := server.Listen("tcp://0.0.0.0:3000")
+	_, err := server.Listen(address)
 	if err != nil {
 		return err
 	}
-	err = server.Register(ping)
+	handle = server.Handler.(*handler.Handler)
+	err = handle.Register(ping)
 	if err != nil {
 		return err
 	}
@@ -59,12 +67,12 @@ func socketDestroyed(socket *sockets.Socket, _ interface{}) bool {
 	return true
 }
 
-func ping(socket *sockets.Socket, msg sockets.Message) interface{} {
+func ping(socket *sockets.Socket, msg *handler.Message) interface{} {
 	var v string
 	if err := msg.Unmarshal(&v); err != nil {
 		socket.Errorf(err)
 	} else {
-		logger.Info("收到消息:%v %v", msg.Code(), v)
+		logger.Info("收到消息:%v %v", msg.Path(), v)
 	}
 
 	return "你好"
