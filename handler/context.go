@@ -56,7 +56,7 @@ func (this *Context) Parse(head []byte) error {
 		return err
 	}
 	if this.size > sockets.Options.MaxDataSize {
-		logger.Debug("包体太长，可能是包头错误:%+v", this)
+		logger.Debug("包体太长，可能是包头错误,size:%v,code:%v", this.size, this.code)
 		return sockets.ErrMsgDataSizeTooLong
 	}
 	return nil
