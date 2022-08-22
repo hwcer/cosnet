@@ -3,7 +3,6 @@ package handler
 import (
 	"github.com/hwcer/cosnet/sockets"
 	"github.com/hwcer/registry"
-	"reflect"
 	"sync"
 	"sync/atomic"
 )
@@ -13,7 +12,7 @@ const HeadSize = 6
 func New() *Handler {
 	i := &Handler{pool: &sync.Pool{}}
 	i.pool.New = func() interface{} {
-		return &Message{}
+		return &Context{}
 	}
 	opts := registry.NewOptions()
 	opts.Filter = i.filter
@@ -38,44 +37,52 @@ func (this *Handler) Handle(socket *sockets.Socket, i sockets.Message) (r bool) 
 			r = socket.Errorf(err)
 		}
 	}()
-	msg, ok := i.(*Message)
+
+	ctx, ok := i.(*Context)
 	if !ok {
 		return socket.Errorf("message error")
 	}
-	path := msg.Path()
+	ctx.Socket = socket
+	autoRelease := true
+	defer func() {
+		if autoRelease {
+			this.Release(ctx)
+		}
+	}()
+
+	path := ctx.Path()
 	urlPath := this.Registry.Clean(path)
 	service, ok := this.Match(urlPath)
 	if !ok {
-		return socket.Errorf("Service not exist")
+		return socket.Errorf("Binder not exist")
 	}
-	pr, fn, ok := service.Match(urlPath)
+	node, ok := service.Match(urlPath)
 	if !ok {
 		return socket.Errorf("ServiceMethod not exist")
 	}
 	var err error
 	var reply interface{}
 	if this.Caller != nil {
-		reply, err = this.Caller(socket, msg, pr, fn)
+		reply, err = this.Caller(ctx, node)
 	} else {
-		reply, err = this.caller(socket, msg, pr, fn)
+		reply, err = this.caller(ctx, node)
 	}
 	if err != nil {
 		return socket.Errorf(err)
 	}
 	if reply != nil {
-		if err = msg.Marshal(path, reply); err != nil {
+		if err = ctx.Marshal(path, reply); err != nil {
 			return socket.Errorf(err)
 		} else {
-			_ = socket.Write(msg)
+			autoRelease = false
+			_ = socket.Write(ctx)
 		}
-	} else {
-		this.Release(msg)
 	}
 	return true
 }
 
 func (this *Handler) Acquire() sockets.Message {
-	r, _ := this.pool.Get().(*Message)
+	r, _ := this.pool.Get().(*Context)
 	if r == nil || !atomic.CompareAndSwapInt32(&r.pool, 0, 1) {
 		return this.Acquire()
 	}
@@ -83,12 +90,13 @@ func (this *Handler) Acquire() sockets.Message {
 }
 
 func (this *Handler) Release(i sockets.Message) {
-	msg, ok := i.(*Message)
+	ctx, ok := i.(*Context)
 	if !ok {
 		return
 	}
-	if atomic.CompareAndSwapInt32(&msg.pool, 1, 0) {
-		this.pool.Put(msg)
+	if atomic.CompareAndSwapInt32(&ctx.pool, 1, 0) {
+		ctx.Socket = nil
+		this.pool.Put(ctx)
 	}
 }
 
@@ -96,16 +104,17 @@ func (this *Handler) Register(i interface{}) error {
 	return this.Registry.Register(i)
 }
 
-func (this *Handler) filter(s *registry.Service, pr, fn reflect.Value) bool {
+func (this *Handler) filter(service *registry.Service, node *registry.Node) bool {
 	if this.Filter != nil {
-		return this.Filter(s, pr, fn)
+		return this.Filter(service, node)
 	}
-	if !pr.IsValid() {
-		_, ok := fn.Interface().(func(socket *sockets.Socket, msg *Message) interface{})
+	if node.IsFunc() {
+		_, ok := node.Method().(func(ctx *Context) interface{})
 		return ok
 	}
+	fn := node.Value()
 	t := fn.Type()
-	if t.NumIn() != 3 {
+	if t.NumIn() != 2 {
 		return false
 	}
 	if t.NumOut() != 1 {
@@ -114,14 +123,14 @@ func (this *Handler) filter(s *registry.Service, pr, fn reflect.Value) bool {
 	return true
 }
 
-func (this *Handler) caller(socket *sockets.Socket, msg *Message, pr, fn reflect.Value) (reply interface{}, err error) {
-	if !pr.IsValid() {
-		f, _ := fn.Interface().(func(socket *sockets.Socket, msg *Message) interface{})
-		reply = f(socket, msg)
-	} else if s, ok := pr.Interface().(RegistryHandle); ok {
-		reply = s.Caller(socket, msg, fn)
+func (this *Handler) caller(ctx *Context, node *registry.Node) (reply interface{}, err error) {
+	if node.IsFunc() {
+		f, _ := node.Method().(func(ctx *Context) interface{})
+		reply = f(ctx)
+	} else if s, ok := node.Binder().(RegistryHandle); ok {
+		reply = s.Caller(ctx, node)
 	} else {
-		ret := fn.Call([]reflect.Value{pr, reflect.ValueOf(socket), reflect.ValueOf(msg)})
+		ret := node.Call(ctx)
 		reply = ret[0].Interface()
 	}
 	return

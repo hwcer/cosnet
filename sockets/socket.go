@@ -184,22 +184,9 @@ func (this *Socket) readMsg(ctx context.Context) {
 		if err != nil {
 			return
 		}
-		//logger.Debug("READ HEAD:%v", head)
-		msg := this.agents.Handler.Acquire()
-		err = msg.Parse(head)
-		if err != nil {
-			logger.Debug("READ HEAD ERR:%v", err)
+		if !this.readMsgTrue(head) {
 			return
 		}
-		//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
-		if msg.Size() > 0 {
-			_, err = msg.Write(this.conn)
-			if err != nil {
-				logger.Debug("READ BODY ERR:%v", err)
-				return
-			}
-		}
-		this.processMsg(this, msg)
 	}
 }
 
@@ -218,6 +205,31 @@ func (this *Socket) writeMsg(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (this *Socket) readMsgTrue(head []byte) (r bool) {
+	//logger.Debug("READ HEAD:%v", head)
+	msg := this.agents.Handler.Acquire()
+	defer func() {
+		if !r {
+			this.agents.Handler.Release(msg)
+		}
+	}()
+	err := msg.Parse(head)
+	if err != nil {
+		logger.Debug("READ HEAD ERR:%v", err)
+		return
+	}
+	//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
+	if msg.Size() > 0 {
+		_, err = msg.Write(this.conn)
+		if err != nil {
+			logger.Debug("READ BODY ERR:%v", err)
+			return
+		}
+	}
+	this.processMsg(this, msg)
+	return true
 }
 
 func (this *Socket) writeMsgTrue(msg Message) bool {

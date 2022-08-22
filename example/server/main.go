@@ -67,12 +67,12 @@ func socketDestroyed(socket *sockets.Socket, _ interface{}) bool {
 	return true
 }
 
-func ping(socket *sockets.Socket, msg *handler.Message) interface{} {
+func ping(ctx *handler.Context) interface{} {
 	var v string
-	if err := msg.Unmarshal(&v); err != nil {
-		socket.Errorf(err)
+	if err := ctx.Unmarshal(&v); err != nil {
+		ctx.Socket.Errorf(err)
 	} else {
-		logger.Info("收到消息:%v %v", msg.Path(), v)
+		logger.Info("收到消息:%v %v", ctx.Path(), v)
 	}
 
 	return "你好"

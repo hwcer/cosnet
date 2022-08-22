@@ -48,7 +48,7 @@ func socketError(socket *sockets.Socket, err interface{}) bool {
 }
 func socketHeartbeat(socket *sockets.Socket, _ interface{}) bool {
 	socket.KeepAlive()
-	m := &handler.Message{}
+	m := &handler.Context{}
 	if err := m.Marshal("ping", "hi"); err == nil {
 		socket.Write(m)
 	}
@@ -73,12 +73,12 @@ func socketDestroyed(socket *sockets.Socket, _ interface{}) bool {
 	return true
 }
 
-func ping(socket *sockets.Socket, msg *handler.Message) interface{} {
+func ping(c *handler.Context) interface{} {
 	var v string
-	if err := msg.Unmarshal(&v); err != nil {
-		socket.Errorf(err)
+	if err := c.Unmarshal(&v); err != nil {
+		c.Socket.Errorf(err)
 	} else {
-		logger.Info("收到回复:%v %v", msg.Path(), v)
+		logger.Info("收到回复:%v %v", c.Path(), v)
 	}
 
 	return nil

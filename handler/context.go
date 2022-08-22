@@ -10,36 +10,37 @@ import (
 	"strings"
 )
 
-// Message 默认使用路径模式集中注册协议
+// Context 默认使用路径模式集中注册协议
 // code : 路径字节数
 // size : code + len(body)
 // data : path + body
 // path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
-type Message struct {
-	pool int32  //防止外部数据随意放入对象池
-	size uint32 //数据BODY 4
-	code uint16 //协议号  2
-	data []byte //数据
+type Context struct {
+	pool   int32  //防止外部数据随意放入对象池
+	size   uint32 //数据BODY 4
+	code   uint16 //协议号  2
+	data   []byte //数据
+	Socket *sockets.Socket
 }
 
 // Size 包体总长
-func (this *Message) Size() int {
+func (this *Context) Size() int {
 	return int(this.size)
 }
 
-func (this *Message) Data() []byte {
+func (this *Context) Data() []byte {
 	return this.data
 }
 
 // Path 路径
-func (this *Message) Path() string {
+func (this *Context) Path() string {
 	path := string(this.data[0:this.code])
 	if i := strings.Index(path, "?"); i >= 0 {
 		path = path[0:i]
 	}
 	return path
 }
-func (this *Message) Query() (r url.Values) {
+func (this *Context) Query() (r url.Values) {
 	path := string(this.data[0:this.code])
 	i := strings.Index(path, "?")
 	r, _ = url.ParseQuery(path[i:])
@@ -47,7 +48,7 @@ func (this *Message) Query() (r url.Values) {
 }
 
 // Parse 解析二进制头并填充到对应字段
-func (this *Message) Parse(head []byte) error {
+func (this *Context) Parse(head []byte) error {
 	if err := utils.BytesToInt(head[0:4], &this.size); err != nil {
 		return err
 	}
@@ -62,7 +63,7 @@ func (this *Message) Parse(head []byte) error {
 }
 
 // Bytes 生成二进制文件
-func (this *Message) Bytes() (b []byte, err error) {
+func (this *Context) Bytes() (b []byte, err error) {
 	buffer := &bytes.Buffer{}
 	if err = utils.IntToBuffer(buffer, this.size); err != nil {
 		return
@@ -78,7 +79,7 @@ func (this *Message) Bytes() (b []byte, err error) {
 }
 
 // Write 从conn中读取数据写入到data
-func (this *Message) Write(r io.Reader) (n int, err error) {
+func (this *Context) Write(r io.Reader) (n int, err error) {
 	size := int(this.size)
 	if len(this.data) > size {
 		this.data = this.data[0:this.size]
@@ -89,7 +90,7 @@ func (this *Message) Write(r io.Reader) (n int, err error) {
 }
 
 // Marshal 将一个对象放入Message.data
-func (this *Message) Marshal(path string, body interface{}) error {
+func (this *Context) Marshal(path string, body interface{}) error {
 	buffer := bytes.NewBuffer(this.data[:0])
 	if n, err := buffer.WriteString(path); err == nil {
 		this.code = uint16(n)
@@ -109,11 +110,11 @@ func (this *Message) Marshal(path string, body interface{}) error {
 }
 
 // Unmarshal 解析Message body
-func (this *Message) Unmarshal(i interface{}) error {
+func (this *Context) Unmarshal(i interface{}) error {
 	return sockets.Options.MessageUnmarshal(this.data[this.code:], i)
 }
 
-func (this *Message) marshal(b *bytes.Buffer, i interface{}) (int, error) {
+func (this *Context) marshal(b *bytes.Buffer, i interface{}) (int, error) {
 	if i == nil {
 		return 0, nil
 	}
