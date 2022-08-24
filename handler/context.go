@@ -2,9 +2,9 @@ package handler
 
 import (
 	"bytes"
-	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/sockets"
+	"github.com/hwcer/logger"
 	"io"
 	"net/url"
 	"strings"

@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/hwcer/cosgo/app"
-	"github.com/hwcer/cosgo/logger"
+	"github.com/hwcer/cosgo"
 	"github.com/hwcer/cosnet"
 	"github.com/hwcer/cosnet/handler"
 	"github.com/hwcer/cosnet/sockets"
+	"github.com/hwcer/logger"
 	"github.com/spf13/pflag"
 )
 
@@ -16,17 +16,17 @@ func init() {
 	pflag.String("address", "tcp://0.0.0.0:3000", "server address")
 }
 func main() {
-	app.Start(&module{ModuleDefault: app.ModuleDefault{Id: "server"}})
-	app.WaitForSystemExit()
+	cosgo.Start(&module{Module: cosgo.NewModule("server")})
+	cosgo.WaitForSystemExit()
 }
 
 type module struct {
-	app.ModuleDefault
+	*cosgo.Module
 }
 
 func (m *module) Start() error {
-	address := app.Config.GetString("address")
-	server = cosnet.New(app.SCC.Context, nil)
+	address := cosgo.Config.GetString("address")
+	server = cosnet.New(cosgo.SCC.Context, nil)
 	_, err := server.Listen(address)
 	if err != nil {
 		return err

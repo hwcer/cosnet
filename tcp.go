@@ -1,8 +1,8 @@
 package cosnet
 
 import (
-	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosnet/sockets"
+	"github.com/hwcer/logger"
 	"net"
 )
 
