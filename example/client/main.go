@@ -47,6 +47,7 @@ func socketError(socket *sockets.Socket, err interface{}) bool {
 	return true
 }
 func socketHeartbeat(socket *sockets.Socket, _ interface{}) bool {
+
 	socket.KeepAlive()
 	m := &handler.Context{}
 	if err := m.Marshal("ping", "hi"); err == nil {

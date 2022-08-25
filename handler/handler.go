@@ -38,19 +38,19 @@ func (this *Handler) Handle(socket *sockets.Socket, i sockets.Message) (r bool) 
 		}
 	}()
 
-	ctx, ok := i.(*Context)
+	c, ok := i.(*Context)
 	if !ok {
 		return socket.Errorf("message error")
 	}
-	ctx.Socket = socket
+	c.Socket = socket
 	autoRelease := true
 	defer func() {
 		if autoRelease {
-			this.Release(ctx)
+			this.Release(c)
 		}
 	}()
 
-	path := ctx.Path()
+	path := c.Path()
 	urlPath := this.Registry.Clean(path)
 	service, ok := this.Match(urlPath)
 	if !ok {
@@ -63,19 +63,19 @@ func (this *Handler) Handle(socket *sockets.Socket, i sockets.Message) (r bool) 
 	var err error
 	var reply interface{}
 	if this.Caller != nil {
-		reply, err = this.Caller(ctx, node)
+		reply, err = this.Caller(c, node)
 	} else {
-		reply, err = this.caller(ctx, node)
+		reply, err = this.caller(c, node)
 	}
 	if err != nil {
 		return socket.Errorf(err)
 	}
 	if reply != nil {
-		if err = ctx.Marshal(path, reply); err != nil {
+		if err = c.Marshal(path, reply); err != nil {
 			return socket.Errorf(err)
 		} else {
 			autoRelease = false
-			_ = socket.Write(ctx)
+			_ = socket.Write(c)
 		}
 	}
 	return true
@@ -123,14 +123,14 @@ func (this *Handler) filter(service *registry.Service, node *registry.Node) bool
 	return true
 }
 
-func (this *Handler) caller(ctx *Context, node *registry.Node) (reply interface{}, err error) {
+func (this *Handler) caller(c *Context, node *registry.Node) (reply interface{}, err error) {
 	if node.IsFunc() {
 		f, _ := node.Method().(func(ctx *Context) interface{})
-		reply = f(ctx)
+		reply = f(c)
 	} else if s, ok := node.Binder().(RegistryHandle); ok {
-		reply = s.Caller(ctx, node)
+		reply = s.Caller(c, node)
 	} else {
-		ret := node.Call(ctx)
+		ret := node.Call(c)
 		reply = ret[0].Interface()
 	}
 	return

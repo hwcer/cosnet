@@ -16,11 +16,11 @@ import (
 // data : path + body
 // path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
 type Context struct {
-	pool   int32  //防止外部数据随意放入对象池
-	size   uint32 //数据BODY 4
-	code   uint16 //协议号  2
-	data   []byte //数据
-	Socket *sockets.Socket
+	*sockets.Socket
+	pool int32  //防止外部数据随意放入对象池
+	size uint32 //数据BODY 4
+	code uint16 //协议号  2
+	data []byte //数据
 }
 
 // Size 包体总长
@@ -112,22 +112,4 @@ func (this *Context) Marshal(path string, body interface{}) error {
 // Unmarshal 解析Message body
 func (this *Context) Unmarshal(i interface{}) error {
 	return sockets.Options.MessageUnmarshal(this.data[this.code:], i)
-}
-
-func (this *Context) marshal(b *bytes.Buffer, i interface{}) (int, error) {
-	if i == nil {
-		return 0, nil
-	}
-	switch v := i.(type) {
-	case []byte:
-		return b.Write(v)
-	case string:
-		return b.Write([]byte(v))
-	default:
-		if d, err := sockets.Options.MessageMarshal(i); err != nil {
-			return 0, err
-		} else {
-			return b.Write(d)
-		}
-	}
 }

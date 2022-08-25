@@ -16,6 +16,8 @@ var Options = struct {
 	ClientReconnectMax  uint16 //断线重连最大尝试次数
 	ClientReconnectTime uint16 //断线重连每次等待时间(MS) ClientReconnectTime * ReconnectNum
 
+	UdpServerWorker int //UDP工作进程数量
+
 	MessageMarshal   func(i interface{}) ([]byte, error) //默认消息解码
 	MessageUnmarshal func(b []byte, i interface{}) error //默认消息编码
 }{
@@ -30,7 +32,7 @@ var Options = struct {
 
 	ClientReconnectMax:  1000,
 	ClientReconnectTime: 5000,
-
-	MessageMarshal:   json.Marshal,
-	MessageUnmarshal: json.Unmarshal,
+	UdpServerWorker:     64,
+	MessageMarshal:      json.Marshal,
+	MessageUnmarshal:    json.Unmarshal,
 }

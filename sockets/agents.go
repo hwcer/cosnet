@@ -36,8 +36,20 @@ type Agents struct {
 	listener map[EventType][]EventsFunc //事件监听
 }
 
+func (this *Agents) GO(f func()) {
+	this.scc.GO(f)
+}
+
+func (this *Agents) CGO(f func(ctx context.Context)) {
+	this.scc.CGO(f)
+}
+
 func (this *Agents) SCC() *utils.SCC {
 	return this.scc
+}
+
+func (this *Agents) Stopped() bool {
+	return this.scc.Stopped()
 }
 
 func (this *Agents) Size() int {

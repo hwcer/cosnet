@@ -6,7 +6,6 @@ import (
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/handler"
 	"github.com/hwcer/cosnet/sockets"
-	"net"
 	"strings"
 )
 
@@ -26,16 +25,18 @@ type Cosnet struct {
 }
 
 // Listen 启动柜服务器,监听address
-func (this *Cosnet) Listen(address string) (listener net.Listener, err error) {
+func (this *Cosnet) Listen(address string) (listener interface{}, err error) {
 	addr := utils.NewAddress(address)
 	if addr.Scheme == "" {
 		return nil, errors.New("address scheme empty")
 	}
-	switch strings.ToLower(addr.Scheme) {
-	case "tcp":
-		listener, err = NewTcpServer(this.Agents, addr.String())
-	//case "udp":
-	//TODO
+	network := strings.ToLower(addr.Scheme)
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+		listener, err = this.NewTcpServer(network, addr.String())
+	case "udp", "udp4", "udp6":
+		listener, err = this.NewUdpServer(network, addr.String())
+	//case "unix", "unixgram", "unixpacket":
 	default:
 		err = errors.New("address scheme unknown")
 	}

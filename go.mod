@@ -2,6 +2,7 @@ module github.com/hwcer/cosnet
 
 go 1.17
 
+
 require (
 	github.com/hwcer/cosgo v0.0.1
 	github.com/hwcer/logger v0.0.1
