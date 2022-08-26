@@ -2,6 +2,7 @@ package cosnet
 
 import (
 	"github.com/hwcer/cosnet/sockets"
+	"github.com/hwcer/cosnet/udp"
 	"github.com/hwcer/logger"
 	"net"
 )
@@ -14,6 +15,11 @@ func (this *Cosnet) NewTcpServer(network, address string) (listener net.Listener
 	this.Agents.GO(func() {
 		this.tcpListener(listener)
 	})
+	return
+}
+
+func (this *Cosnet) NewUdpServer(network, address string) (server *udp.Server, err error) {
+	server, err = udp.New(this.Agents, network, address)
 	return
 }
 
