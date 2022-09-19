@@ -1,4 +1,4 @@
-package sockets
+package cosnet
 
 import (
 	"sync"
@@ -85,7 +85,7 @@ func (this *Socket) Verify(uuid string, data interface{}) (err error) {
 	player := &Player{uuid: uuid, data: data, socket: this}
 	player.mutex.Lock()
 	defer player.mutex.Unlock()
-	if v, loaded := this.agents.Players.Map.LoadOrStore(uuid, player); loaded {
+	if v, loaded := this.Agents.Players.Map.LoadOrStore(uuid, player); loaded {
 		p, _ := v.(*Player)
 		err = this.reconnect(p, data)
 	} else {

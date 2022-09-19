@@ -1,11 +1,15 @@
-package sockets
+package cosnet
 
 import (
 	"context"
 	"errors"
 	"github.com/hwcer/cosgo/smap"
 	"github.com/hwcer/cosgo/utils"
+	"github.com/hwcer/logger"
+	"github.com/hwcer/registry"
 	"net"
+	"runtime/debug"
+	"sync"
 	"time"
 )
 
@@ -15,12 +19,16 @@ func newSetter(id smap.MID, val interface{}) smap.Setter {
 	return d
 }
 
-func New(ctx context.Context, handler Handler) *Agents {
+func New(ctx context.Context) *Agents {
 	i := &Agents{
 		scc:      utils.NewSCC(ctx),
+		pool:     sync.Pool{},
 		Array:    smap.New(1024),
-		Handler:  handler,
 		listener: make(map[EventType][]EventsFunc),
+		registry: registry.New(nil),
+	}
+	i.pool.New = func() interface{} {
+		return &Message{}
 	}
 	i.Players = NewPlayers(i)
 	i.Array.NewSetter = newSetter
@@ -31,9 +39,10 @@ func New(ctx context.Context, handler Handler) *Agents {
 type Agents struct {
 	*smap.Array
 	scc      *utils.SCC
+	pool     sync.Pool
 	Players  *Players                   //存储用户登录信息
-	Handler  Handler                    //默认消息处理,handle中未明确注册的消息一律进入到这里
 	listener map[EventType][]EventsFunc //事件监听
+	registry *registry.Registry
 }
 
 func (this *Agents) GO(f func()) {
@@ -58,9 +67,6 @@ func (this *Agents) Size() int {
 
 // New 创建新socket并自动加入到Sockets管理器
 func (this *Agents) New(conn net.Conn, netType NetType) (socket *Socket, err error) {
-	if this.Handler == nil {
-		return nil, errors.New("handler is nil")
-	}
 	socket = NewSocket(this, conn, netType)
 	this.Array.Create(socket)
 	this.Emit(EventTypeConnected, socket)
@@ -74,6 +80,61 @@ func (this *Agents) Range(fn func(socket *Socket) bool) {
 		}
 		return true
 	})
+}
+
+func (this *Agents) Acquire() *Message {
+	r, _ := this.pool.Get().(*Message)
+	return r
+}
+
+func (this *Agents) Release(i *Message) {
+	i.size = 0
+	i.code = 0
+	this.pool.Put(i)
+}
+
+func (this *Agents) Service(name string, handler ...interface{}) *registry.Service {
+	service := this.registry.Service(name)
+	if service.Handler == nil {
+		h := &Handler{}
+		service.Handler = h
+		service.On(registry.FilterEventTypeFunc, h.Filter)
+		service.On(registry.FilterEventTypeMethod, h.Filter)
+		service.On(registry.FilterEventTypeStruct, h.Filter)
+	}
+	if h, ok := service.Handler.(*Handler); ok {
+		for _, i := range handler {
+			h.Use(i)
+		}
+	}
+	return service
+}
+func (this *Agents) Register(f interface{}) error {
+	service := this.Service("")
+	return service.Register(f)
+}
+func (this *Agents) handle(socket *Socket, msg *Message) error {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Info("server recover error:%v\n%v", r, string(debug.Stack()))
+		}
+	}()
+	urlPath := this.registry.Clean(msg.Path())
+	node, ok := this.registry.Match(urlPath)
+	if !ok {
+		return errors.New("ServicePath not exist")
+	}
+	service := node.Service()
+	handler, ok := service.Handler.(*Handler)
+	if !ok {
+		return errors.New("handler unknown")
+	}
+	c := &Context{Socket: socket, Message: msg}
+	reply, err := handler.Caller(node, c)
+	if err != nil {
+		return err
+	}
+	return handler.Serialize(c, reply)
 }
 
 // heartbeat 启动协程定时清理无效用户
@@ -136,7 +197,7 @@ func (this *Agents) Player(id interface{}) (player *Player) {
 }
 
 // Broadcast 广播,filter 过滤函数，如果不为nil且返回false则不对当期socket进行发送消息
-func (this *Agents) Broadcast(msg Message, filter func(*Socket) bool) {
+func (this *Agents) Broadcast(msg *Message, filter func(*Socket) bool) {
 	this.Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
 			sock.Write(msg)

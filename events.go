@@ -1,4 +1,4 @@
-package sockets
+package cosnet
 
 import (
 	"fmt"

@@ -1,4 +1,4 @@
-package sockets
+package cosnet
 
 import (
 	"context"
@@ -17,11 +17,11 @@ const (
 )
 
 func NewSocket(engine *Agents, conn net.Conn, netType NetType) *Socket {
-	socket := &Socket{conn: conn, agents: engine, netType: netType}
+	socket := &Socket{conn: conn, Agents: engine, netType: netType}
 	socket.stop = make(chan struct{})
-	socket.cwrite = make(chan Message, Options.WriteChanSize)
-	socket.agents.scc.CGO(socket.readMsg)
-	socket.agents.scc.CGO(socket.writeMsg)
+	socket.cwrite = make(chan *Message, Options.WriteChanSize)
+	socket.Agents.scc.CGO(socket.readMsg)
+	socket.Agents.scc.CGO(socket.writeMsg)
 	return socket
 }
 
@@ -30,15 +30,15 @@ type Socket struct {
 	*smap.Data
 	conn      net.Conn
 	stop      chan struct{} //stop
-	agents    *Agents       //Agents
-	cwrite    chan Message  //写入通道,仅仅强制关闭的会被CLOSE
+	Agents    *Agents       //Agents
+	cwrite    chan *Message //写入通道,仅仅强制关闭的会被CLOSE
 	status    int32         //0-正常，1-断开，2-强制关闭
 	netType   NetType       //网络连接类型
 	heartbeat uint16        //heartbeat >=timeout 时被标记为超时
 }
 
 func (this *Socket) emit(e EventType) bool {
-	return this.agents.Emit(e, this)
+	return this.Agents.Emit(e, this)
 }
 
 // destroy 彻底销毁,移除资源
@@ -51,7 +51,7 @@ func (this *Socket) destroy() {
 			close(this.cwrite)
 		})
 	}
-	this.agents.Remove(this.Id())
+	this.Agents.Remove(this.Id())
 	this.emit(EventTypeDestroyed)
 }
 
@@ -75,7 +75,7 @@ func (this *Socket) disconnect() {
 //}
 
 // Close 强制关闭,无法重连
-func (this *Socket) Close(msg ...Message) {
+func (this *Socket) Close(msg ...*Message) {
 	defer func() {
 		_ = recover()
 	}()
@@ -86,7 +86,7 @@ func (this *Socket) Close(msg ...Message) {
 }
 
 func (this *Socket) Errorf(format interface{}, args ...interface{}) bool {
-	return this.agents.Errorf(this, format, args...)
+	return this.Agents.Errorf(this, format, args...)
 }
 
 func (this *Socket) Status() int32 {
@@ -148,7 +148,7 @@ func (this *Socket) RemoteAddr() net.Addr {
 }
 
 // Write 外部写入消息
-func (this *Socket) Write(m Message) (re bool) {
+func (this *Socket) Write(m *Message) (re bool) {
 	defer func() {
 		if e := recover(); e != nil {
 			re = this.Errorf(e)
@@ -167,18 +167,18 @@ func (this *Socket) Write(m Message) (re bool) {
 	return
 }
 
-func (this *Socket) processMsg(socket *Socket, msg Message) {
+func (this *Socket) processMsg(socket *Socket, msg *Message) {
 	this.KeepAlive()
 	//logger.Debug("processMsg:%+v", msg)
-	if !this.agents.Handler.Handle(socket, msg) {
-		socket.disconnect()
+	if err := this.Agents.handle(socket, msg); err != nil {
+		socket.disconnect() //TODO
 	}
 }
 
 func (this *Socket) readMsg(ctx context.Context) {
 	defer this.disconnect()
 	var err error
-	head := make([]byte, this.agents.Handler.Head())
+	head := make([]byte, MessageHead)
 	for {
 		_, err = io.ReadFull(this.conn, head)
 		if err != nil {
@@ -192,7 +192,7 @@ func (this *Socket) readMsg(ctx context.Context) {
 
 func (this *Socket) writeMsg(ctx context.Context) {
 	defer this.disconnect()
-	var msg Message
+	var msg *Message
 	for {
 		select {
 		case <-ctx.Done():
@@ -209,10 +209,10 @@ func (this *Socket) writeMsg(ctx context.Context) {
 
 func (this *Socket) readMsgTrue(head []byte) (r bool) {
 	//logger.Debug("READ HEAD:%v", head)
-	msg := this.agents.Handler.Acquire()
+	msg := this.Agents.Acquire()
 	defer func() {
 		if !r {
-			this.agents.Handler.Release(msg)
+			this.Agents.Release(msg)
 		}
 	}()
 	err := msg.Parse(head)
@@ -232,8 +232,10 @@ func (this *Socket) readMsgTrue(head []byte) (r bool) {
 	return true
 }
 
-func (this *Socket) writeMsgTrue(msg Message) bool {
-	defer this.agents.Handler.Release(msg)
+func (this *Socket) writeMsgTrue(msg *Message) (r bool) {
+	defer func() {
+		this.Agents.Release(msg)
+	}()
 	data, err := msg.Bytes()
 	if err != nil {
 		return this.Errorf(err)
