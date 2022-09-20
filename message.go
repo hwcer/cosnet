@@ -93,12 +93,6 @@ func (this *Message) Reader() io.Reader {
 	return bytes.NewReader(this.data)
 }
 
-// Reply 使用原始路径填充一个回复信息
-func (this *Message) Reply(i interface{}) error {
-	path := this.data[0:this.code]
-	return this.Marshal(string(path), i)
-}
-
 // Marshal 将一个对象放入Message.data
 func (this *Message) Marshal(path string, body interface{}) error {
 	buffer := bytes.NewBuffer(this.data[:0])

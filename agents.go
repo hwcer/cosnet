@@ -113,52 +113,6 @@ func (this *Agents) Register(f interface{}) error {
 	service := this.Service("")
 	return service.Register(f)
 }
-func (this *Agents) handle(socket *Socket, msg *Message) error {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Info("server recover error:%v\n%v", r, string(debug.Stack()))
-		}
-	}()
-	urlPath := this.registry.Clean(msg.Path())
-	node, ok := this.registry.Match(urlPath)
-	if !ok {
-		return errors.New("ServicePath not exist")
-	}
-	service := node.Service()
-	handler, ok := service.Handler.(*Handler)
-	if !ok {
-		return errors.New("handler unknown")
-	}
-	c := &Context{Socket: socket, Message: msg}
-	reply, err := handler.Caller(node, c)
-	if err != nil {
-		return err
-	}
-	return handler.Serialize(c, reply)
-}
-
-// heartbeat 启动协程定时清理无效用户
-func (this *Agents) heartbeat(ctx context.Context) {
-	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
-	ticker := time.NewTimer(t)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			utils.Try(this.doHeartbeat)
-			ticker.Reset(t)
-		}
-	}
-}
-func (this *Agents) doHeartbeat() {
-	this.Range(func(socket *Socket) bool {
-		socket.Heartbeat()
-		this.Emit(EventTypeHeartbeat, socket)
-		return true
-	})
-}
 
 func (this *Agents) Close(timeout time.Duration) error {
 	if !this.scc.Cancel() {
@@ -202,6 +156,53 @@ func (this *Agents) Broadcast(msg *Message, filter func(*Socket) bool) {
 		if filter == nil || filter(sock) {
 			sock.Write(msg)
 		}
+		return true
+	})
+}
+
+func (this *Agents) handle(socket *Socket, msg *Message) error {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Info("server recover error:%v\n%v", r, string(debug.Stack()))
+		}
+	}()
+	urlPath := this.registry.Clean(msg.Path())
+	node, ok := this.registry.Match(urlPath)
+	if !ok {
+		return errors.New("ServicePath not exist")
+	}
+	service := node.Service()
+	handler, ok := service.Handler.(*Handler)
+	if !ok {
+		return errors.New("handler unknown")
+	}
+	c := &Context{Socket: socket, Message: msg}
+	reply, err := handler.Caller(node, c)
+	if err != nil {
+		return err
+	}
+	return handler.Serialize(c, reply)
+}
+
+// heartbeat 启动协程定时清理无效用户
+func (this *Agents) heartbeat(ctx context.Context) {
+	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
+	ticker := time.NewTimer(t)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			utils.Try(this.doHeartbeat)
+			ticker.Reset(t)
+		}
+	}
+}
+func (this *Agents) doHeartbeat() {
+	this.Range(func(socket *Socket) bool {
+		socket.Heartbeat()
+		this.Emit(EventTypeHeartbeat, socket)
 		return true
 	})
 }

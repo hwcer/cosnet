@@ -4,14 +4,13 @@ import (
 	"github.com/hwcer/logger"
 	"github.com/hwcer/registry"
 	"reflect"
-	"runtime/debug"
 )
 
 type handleCaller interface {
 	Caller(node *registry.Node, c *Context) interface{}
 }
 type HandlerCaller func(node *registry.Node, c *Context) (interface{}, error)
-type HandlerSerialize func(c *Context, reply interface{}) (interface{}, error)
+type HandlerSerialize func(c *Context, reply interface{}) error
 
 type Handler struct {
 	caller    HandlerCaller
@@ -50,13 +49,6 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{},
 	if this.caller != nil {
 		return this.caller(node, c)
 	}
-	defer func() {
-		if v := recover(); v != nil {
-			_ = c.Socket.Errorf(v)
-			logger.Info("rpc server recover error:%v\n%v", v, string(debug.Stack()))
-		}
-	}()
-
 	if node.IsFunc() {
 		f := node.Method().(func(*Context) interface{})
 		reply = f(c)
@@ -71,17 +63,12 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{},
 
 func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
 	if this.serialize != nil {
-		reply, err = this.serialize(c, reply)
-	}
-	if err != nil {
-		return err
+		return this.serialize(c, reply)
 	}
 	if reply != nil {
-		if err = c.Message.Reply(reply); err == nil {
-			_ = c.Socket.Write(c.Message)
-		}
+		err = c.Reply(reply)
 	} else {
 		c.Socket.Agents.Release(c.Message)
 	}
-	return nil
+	return
 }

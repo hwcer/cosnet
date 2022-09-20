@@ -1,31 +1,12 @@
 package cosnet
 
-import "net/url"
-
 type Context struct {
-	query   url.Values
-	Socket  *Socket
-	Message *Message
+	*Message
+	Socket *Socket
 }
 
-func (this *Context) Path() string {
-	return this.Message.Path()
-}
-
-func (this *Context) Query(key string) string {
-	if this.query == nil {
-		s := this.Message.Query()
-		if v, err := url.ParseQuery(s); err == nil {
-			this.query = v
-		} else {
-			this.query = url.Values{}
-		}
-	}
-	return this.query.Get(key)
-}
-
-func (this *Context) Write(path string, data interface{}) error {
-	msg := this.Socket.Agents.Acquire()
+func (this *Context) Send(path string, data interface{}) error {
+	msg := this.Acquire()
 	if err := msg.Marshal(path, data); err != nil {
 		return err
 	}
@@ -33,6 +14,12 @@ func (this *Context) Write(path string, data interface{}) error {
 	return nil
 }
 
-func (this *Context) Unmarshal(i interface{}) error {
-	return this.Message.Unmarshal(i)
+// Reply 使用当前消息路径回复信息
+func (this *Context) Reply(data interface{}) error {
+	path := this.data[0:this.code]
+	return this.Send(string(path), data)
+}
+
+func (this *Context) Acquire() *Message {
+	return this.Socket.Agents.Acquire()
 }
