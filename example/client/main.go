@@ -44,7 +44,7 @@ func socketError(socket *cosnet.Socket, err interface{}) bool {
 }
 func socketHeartbeat(socket *cosnet.Socket, _ interface{}) bool {
 	socket.KeepAlive()
-	m := cosnet.Pool.Acquire()
+	m := socket.Agents.Acquire()
 	if err := m.Marshal("ping", "hi"); err == nil {
 		socket.Write(m)
 	}

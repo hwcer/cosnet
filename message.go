@@ -17,16 +17,17 @@ import (
 const MessageHead = 6
 
 type Message struct {
-	size uint32 //数据BODY 4
-	code uint16 //service path len
-	data []byte //数据
+	size uint32 // 4   数据BODY长度
+	code uint16 // 2   路径PATH长度
+	data []byte //数据    [path][body]
 }
 
-// Size 包体总长
-func (this *Message) Size() int {
-	return int(this.size)
+// Len 包体总长
+func (this *Message) Len() int {
+	return int(this.size) + int(this.code)
 }
 
+// Data 包体数据，包括路径和消息体
 func (this *Message) Data() []byte {
 	return this.data
 }
@@ -38,6 +39,11 @@ func (this *Message) Path() string {
 		path = path[0:i]
 	}
 	return path
+}
+
+// Body 消息体数据
+func (this *Message) Body() []byte {
+	return this.data[this.code:]
 }
 
 // Query 查询字符串
@@ -71,8 +77,9 @@ func (this *Message) Bytes() (b []byte, err error) {
 	if err = utils.IntToBuffer(buffer, this.code); err != nil {
 		return
 	}
-	if this.size > 0 {
-		_, err = buffer.Write(this.data[0:this.size])
+	size := this.Len()
+	if size > 0 {
+		_, err = buffer.Write(this.data[0:size])
 	}
 	b = buffer.Bytes()
 	return
@@ -80,11 +87,11 @@ func (this *Message) Bytes() (b []byte, err error) {
 
 // Write 从conn中读取数据写入到data
 func (this *Message) Write(r io.Reader) (n int, err error) {
-	size := int(this.size)
+	size := this.Len()
 	if len(this.data) > size {
-		this.data = this.data[0:this.size]
+		this.data = this.data[0:size]
 	} else if len(this.data) < size {
-		this.data = make([]byte, this.size)
+		this.data = make([]byte, size)
 	}
 	return io.ReadFull(r, this.data)
 }
@@ -98,7 +105,6 @@ func (this *Message) Marshal(path string, body interface{}) error {
 	buffer := bytes.NewBuffer(this.data[:0])
 	if n, err := buffer.WriteString(path); err == nil {
 		this.code = uint16(n)
-		this.size = uint32(n)
 	} else {
 		return err
 	}
@@ -107,7 +113,7 @@ func (this *Message) Marshal(path string, body interface{}) error {
 		return err
 	}
 	if n, e := buffer.Write(data); e == nil {
-		this.size += uint32(n)
+		this.size = uint32(n)
 	}
 	this.data = buffer.Bytes()
 	return nil

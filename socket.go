@@ -221,7 +221,7 @@ func (this *Socket) readMsgTrue(head []byte) (r bool) {
 		return
 	}
 	//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
-	if msg.Size() > 0 {
+	if msg.Len() > 0 {
 		_, err = msg.Write(this.conn)
 		if err != nil {
 			logger.Debug("READ BODY ERR:%v", err)
