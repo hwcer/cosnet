@@ -2,7 +2,6 @@ package cosnet
 
 import (
 	"context"
-	"errors"
 	"github.com/hwcer/cosgo/smap"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/logger"
@@ -163,13 +162,14 @@ func (this *Agents) Broadcast(msg *Message, filter func(*Socket) bool) {
 	})
 }
 
-func (this *Agents) handle(socket *Socket, msg *Message) (err error) {
+func (this *Agents) handle(socket *Socket, msg *Message) {
 	defer func() {
-		if r := recover(); r != nil {
-			logger.Info("server recover error:%v\n%v", r, string(debug.Stack()))
+		if err := recover(); err != nil {
+			logger.Info("server handle error:%v\n%v", err, string(debug.Stack()))
 		}
 	}()
 	c := &Context{Socket: socket, Message: msg}
+	var err error
 	path := c.Path()
 	if i := strings.Index(path, "?"); i >= 0 {
 		path = path[0:i]
@@ -180,24 +180,22 @@ func (this *Agents) handle(socket *Socket, msg *Message) (err error) {
 	if !ok {
 		if this.Handle != nil {
 			reply, err = this.Handle(c)
-		} else {
-			err = errors.New("ServicePath not exist")
 		}
-		if err != nil {
-			return err
+		if err == nil {
+			err = Serialize(c, reply)
 		}
-		return Serialize(c, reply)
 	} else {
 		service := node.Service()
 		handler, _ := service.Handler.(*Handler)
-		if !ok {
-			return errors.New("handler unknown")
+		if handler != nil {
+			reply, err = handler.Caller(node, c)
 		}
-		reply, err = handler.Caller(node, c)
-		if err != nil {
-			return err
+		if err == nil {
+			err = handler.Serialize(c, reply)
 		}
-		return handler.Serialize(c, reply)
+	}
+	if err != nil {
+		this.Errorf(socket, err)
 	}
 }
 

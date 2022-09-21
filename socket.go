@@ -169,10 +169,7 @@ func (this *Socket) Write(m *Message) (re bool) {
 
 func (this *Socket) processMsg(socket *Socket, msg *Message) {
 	this.KeepAlive()
-	//logger.Debug("processMsg:%+v", msg)
-	if err := this.Agents.handle(socket, msg); err != nil {
-		socket.disconnect() //TODO
-	}
+	this.Agents.handle(socket, msg)
 }
 
 func (this *Socket) readMsg(ctx context.Context) {

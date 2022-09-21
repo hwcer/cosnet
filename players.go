@@ -14,7 +14,6 @@ func NewPlayers(engine *Agents) *Players {
 type Player struct {
 	uuid   string
 	data   interface{} //用户数据
-	secret string      //短信重连秘钥
 	mutex  sync.Mutex
 	socket *Socket
 }
