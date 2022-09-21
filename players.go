@@ -1,6 +1,7 @@
 package cosnet
 
 import (
+	"github.com/hwcer/cosgo/values"
 	"sync"
 )
 
@@ -11,11 +12,16 @@ func NewPlayers(engine *Agents) *Players {
 	return p
 }
 
+func NewPlayer(uuid string, socket *Socket) *Player {
+	return &Player{uuid: uuid, socket: socket, Values: values.Values{}}
+}
+
 type Player struct {
+	values.Values
 	uuid   string
-	data   interface{} //用户数据
 	mutex  sync.Mutex
 	socket *Socket
+	attach interface{} //用户登录信息
 }
 
 type Players struct {
@@ -31,6 +37,13 @@ func (this *Player) replace(socket *Socket) {
 		old.Close()
 	}
 	return
+}
+
+func (this *Player) UUID() string {
+	return this.uuid
+}
+func (this *Player) Attach() interface{} {
+	return this.attach
 }
 
 func (this *Player) Socket() *Socket {
@@ -72,21 +85,22 @@ func (this *Players) Range(fn func(*Player) bool) {
 }
 
 // Verify 身份认证,登录,TOKEN信息验证之后调用
-func (this *Socket) Verify(uuid string, data interface{}) (err error) {
+func (this *Socket) Verify(uuid string, attach interface{}) (err error) {
 	if this.Verified() {
 		return ErrAuthDataExist
 	}
 	if Options.SocketReconnectTime == 0 {
-		this.Set(data)
+		this.Set(attach)
 		this.emit(EventTypeVerified)
 		return
 	}
-	player := &Player{uuid: uuid, data: data, socket: this}
+	player := NewPlayer(uuid, this)
+	player.attach = attach
 	player.mutex.Lock()
 	defer player.mutex.Unlock()
 	if v, loaded := this.Agents.Players.Map.LoadOrStore(uuid, player); loaded {
 		p, _ := v.(*Player)
-		err = this.reconnect(p, data)
+		err = this.reconnect(p, attach)
 	} else {
 		this.Set(player)
 		this.emit(EventTypeVerified)
@@ -94,7 +108,7 @@ func (this *Socket) Verify(uuid string, data interface{}) (err error) {
 	return
 }
 
-func (this *Socket) reconnect(player *Player, data interface{}) error {
+func (this *Socket) reconnect(player *Player, attach interface{}) error {
 	if player == nil {
 		return ErrAuthDataIllegal
 	}
@@ -103,7 +117,7 @@ func (this *Socket) reconnect(player *Player, data interface{}) error {
 	if this.Verified() {
 		return ErrAuthDataExist
 	}
-	player.data = data
+	player.attach = attach
 	if player.socket != nil && player.socket.status != StatusTypeDestroying && player.socket.cwrite != nil {
 		player.socket.cwrite, this.cwrite = this.cwrite, player.socket.cwrite
 	}
