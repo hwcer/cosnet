@@ -5,6 +5,7 @@ import (
 	"github.com/hwcer/cosnet"
 	"github.com/hwcer/logger"
 	"github.com/spf13/pflag"
+	"time"
 )
 
 var server *cosnet.Agents
@@ -71,5 +72,5 @@ func ping(c *cosnet.Context) interface{} {
 		logger.Info("收到消息:%v %v", c.Path(), v)
 	}
 
-	return "你好"
+	return time.Now().Unix()
 }

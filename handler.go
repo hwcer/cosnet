@@ -1,6 +1,7 @@
 package cosnet
 
 import (
+	"github.com/hwcer/cosgo/message"
 	"github.com/hwcer/logger"
 	"github.com/hwcer/registry"
 	"reflect"
@@ -65,10 +66,19 @@ func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
 	if this.serialize != nil {
 		return this.serialize(c, reply)
 	}
-	if reply != nil {
-		err = c.Reply(reply)
-	} else {
+	return Serialize(c, reply)
+}
+
+func Serialize(c *Context, reply interface{}) (err error) {
+	if reply == nil {
 		c.Socket.Agents.Release(c.Message)
+		return
 	}
-	return
+	switch v := reply.(type) {
+	case []byte:
+		return c.Reply(0, v)
+	default:
+		msg := message.Parse(reply)
+		return c.Reply(int32(msg.Code), []byte(msg.Data))
+	}
 }

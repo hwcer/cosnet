@@ -9,6 +9,7 @@ import (
 	"github.com/hwcer/registry"
 	"net"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,8 +41,9 @@ type Agents struct {
 	*smap.Array
 	scc      *utils.SCC
 	pool     sync.Pool
-	Players  *Players                   //存储用户登录信息
-	listener map[EventType][]EventsFunc //事件监听
+	Handle   func(*Context) (interface{}, error) //默认消息处理器，registry匹配不到时使用
+	Players  *Players                            //存储用户登录信息
+	listener map[EventType][]EventsFunc          //事件监听
 	registry *registry.Registry
 }
 
@@ -88,8 +90,9 @@ func (this *Agents) Acquire() *Message {
 }
 
 func (this *Agents) Release(i *Message) {
-	i.size = 0
 	i.code = 0
+	i.path = 0
+	i.body = 0
 	this.pool.Put(i)
 }
 
@@ -109,9 +112,9 @@ func (this *Agents) Service(name string, handler ...interface{}) *registry.Servi
 	}
 	return service
 }
-func (this *Agents) Register(f interface{}) error {
+func (this *Agents) Register(f interface{}, prefix ...string) error {
 	service := this.Service("")
-	return service.Register(f)
+	return service.Register(f, prefix...)
 }
 
 func (this *Agents) Close(timeout time.Duration) error {
@@ -160,28 +163,42 @@ func (this *Agents) Broadcast(msg *Message, filter func(*Socket) bool) {
 	})
 }
 
-func (this *Agents) handle(socket *Socket, msg *Message) error {
+func (this *Agents) handle(socket *Socket, msg *Message) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Info("server recover error:%v\n%v", r, string(debug.Stack()))
 		}
 	}()
-	urlPath := this.registry.Clean(msg.Path())
-	node, ok := this.registry.Match(urlPath)
-	if !ok {
-		return errors.New("ServicePath not exist")
-	}
-	service := node.Service()
-	handler, ok := service.Handler.(*Handler)
-	if !ok {
-		return errors.New("handler unknown")
-	}
 	c := &Context{Socket: socket, Message: msg}
-	reply, err := handler.Caller(node, c)
-	if err != nil {
-		return err
+	path := c.Path()
+	if i := strings.Index(path, "?"); i >= 0 {
+		path = path[0:i]
 	}
-	return handler.Serialize(c, reply)
+	urlPath := this.registry.Clean(path)
+	node, ok := this.registry.Match(urlPath)
+	var reply interface{}
+	if !ok {
+		if this.Handle != nil {
+			reply, err = this.Handle(c)
+		} else {
+			err = errors.New("ServicePath not exist")
+		}
+		if err != nil {
+			return err
+		}
+		return Serialize(c, reply)
+	} else {
+		service := node.Service()
+		handler, _ := service.Handler.(*Handler)
+		if !ok {
+			return errors.New("handler unknown")
+		}
+		reply, err = handler.Caller(node, c)
+		if err != nil {
+			return err
+		}
+		return handler.Serialize(c, reply)
+	}
 }
 
 // heartbeat 启动协程定时清理无效用户

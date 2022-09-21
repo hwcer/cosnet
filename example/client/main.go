@@ -45,7 +45,7 @@ func socketError(socket *cosnet.Socket, err interface{}) bool {
 func socketHeartbeat(socket *cosnet.Socket, _ interface{}) bool {
 	socket.KeepAlive()
 	m := socket.Agents.Acquire()
-	if err := m.Marshal("ping", "hi"); err == nil {
+	if err := m.Marshal(0, "ping", "hi"); err == nil {
 		socket.Write(m)
 	}
 	return true
@@ -69,7 +69,7 @@ func socketDestroyed(socket *cosnet.Socket, _ interface{}) bool {
 }
 
 func ping(c *cosnet.Context) interface{} {
-	var v string
+	var v int64
 	if err := c.Unmarshal(&v); err != nil {
 		c.Socket.Errorf(err)
 	} else {
