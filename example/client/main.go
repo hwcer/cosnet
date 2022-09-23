@@ -9,8 +9,10 @@ import (
 
 var server *cosnet.Agents
 
+const C2SPing = "C2sHeartbeat"
+
 func init() {
-	pflag.String("address", "tcp://0.0.0.0:3000", "server address")
+	pflag.String("address", "tcp://10.26.17.20:3001", "server address")
 }
 
 func main() {
@@ -29,7 +31,7 @@ func (m *module) Start() error {
 	if err != nil {
 		return err
 	}
-	_ = server.Register(ping)
+	_ = server.Register(ping, C2SPing)
 	server.On(cosnet.EventTypeError, socketError)
 	server.On(cosnet.EventTypeHeartbeat, socketHeartbeat)
 	server.On(cosnet.EventTypeConnected, socketConnected)
@@ -45,7 +47,7 @@ func socketError(socket *cosnet.Socket, err interface{}) bool {
 func socketHeartbeat(socket *cosnet.Socket, _ interface{}) bool {
 	socket.KeepAlive()
 	m := socket.Agents.Acquire()
-	if err := m.Marshal(0, "ping", "hi"); err == nil {
+	if err := m.Marshal(0, C2SPing, "hi"); err == nil {
 		socket.Write(m)
 	}
 	return true
@@ -69,12 +71,12 @@ func socketDestroyed(socket *cosnet.Socket, _ interface{}) bool {
 }
 
 func ping(c *cosnet.Context) interface{} {
-	var v int64
-	if err := c.Unmarshal(&v); err != nil {
-		c.Socket.Errorf(err)
-	} else {
-		logger.Info("收到回复:%v %v", c.Path(), v)
-	}
-
+	//var v string
+	//if err := c.Unmarshal(&v); err != nil {
+	//	c.Socket.Errorf(err)
+	//} else {
+	//	logger.Info("收到回复:%v %v", c.Path(), v)
+	//}
+	logger.Info("收到回复  PATH:%v   BODY:%v", []byte(c.Path()), c.Body())
 	return nil
 }

@@ -45,6 +45,7 @@ func (this *Handler) Filter(node *registry.Node) bool {
 		return true
 	}
 }
+func (this *Handler) handle() {}
 
 func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{}, err error) {
 	if this.caller != nil {

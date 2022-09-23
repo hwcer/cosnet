@@ -30,6 +30,7 @@ func New(ctx context.Context) *Agents {
 	i.pool.New = func() interface{} {
 		return &Message{}
 	}
+	i.router = registry.NewRouter()
 	i.Players = NewPlayers(i)
 	i.Array.NewSetter = newSetter
 	i.scc.CGO(i.heartbeat)
@@ -40,9 +41,9 @@ type Agents struct {
 	*smap.Array
 	scc      *utils.SCC
 	pool     sync.Pool
-	Handle   func(*Context) (interface{}, error) //默认消息处理器，registry匹配不到时使用
-	Players  *Players                            //存储用户登录信息
-	listener map[EventType][]EventsFunc          //事件监听
+	router   *registry.Router
+	Players  *Players                   //存储用户登录信息
+	listener map[EventType][]EventsFunc //事件监听
 	registry *registry.Registry
 }
 
@@ -71,6 +72,24 @@ func (this *Agents) New(conn net.Conn, netType NetType) (socket *Socket, err err
 	socket = NewSocket(this, conn, netType)
 	this.Array.Create(socket)
 	this.Emit(EventTypeConnected, socket)
+	return
+}
+
+// Start starts an HTTP server.
+func (s *Agents) Start() (err error) {
+	//注册所有 service
+	for _, service := range s.registry.Services() {
+		service.Range(func(node *registry.Node) bool {
+			route := registry.PathName(service.Name(), node.Name())
+			if err = s.router.Register(route, node); err != nil {
+				return false
+			}
+			return true
+		})
+		if err != nil {
+			return
+		}
+	}
 	return
 }
 
@@ -111,9 +130,10 @@ func (this *Agents) Service(name string, handler ...interface{}) *registry.Servi
 	}
 	return service
 }
-func (this *Agents) Register(f interface{}, prefix ...string) error {
+
+func (this *Agents) Register(i interface{}, prefix ...string) error {
 	service := this.Service("")
-	return service.Register(f, prefix...)
+	return service.Register(i, prefix...)
 }
 
 func (this *Agents) Close(timeout time.Duration) error {
@@ -174,31 +194,29 @@ func (this *Agents) handle(socket *Socket, msg *Message) {
 	if i := strings.Index(path, "?"); i >= 0 {
 		path = path[0:i]
 	}
-	urlPath := this.registry.Clean(path)
-	node, ok := this.registry.Match(urlPath)
-	var reply interface{}
+	routes := this.router.Match(path)
+	if len(routes) == 0 {
+		return
+	}
+	node, ok := routes[0].Handle().(*registry.Node)
 	if !ok {
-		if this.Handle != nil {
-			reply, err = this.Handle(c)
-		}
-		if err == nil {
-			err = Serialize(c, reply)
-		}
-	} else {
-		service := node.Service()
-		handler, _ := service.Handler.(*Handler)
-		if handler != nil {
-			reply, err = handler.Caller(node, c)
-		}
-		if err == nil {
-			err = handler.Serialize(c, reply)
-		}
+		return
+	}
+	service := node.Service()
+	handler, _ := service.Handler.(*Handler)
+	if handler == nil {
+		return
+	}
+	reply, err := handler.Caller(node, c)
+	if err == nil {
+		err = handler.Serialize(c, reply)
 	}
 	if err != nil {
 		this.Errorf(socket, err)
 	}
 }
 
+// 11v9
 // heartbeat 启动协程定时清理无效用户
 func (this *Agents) heartbeat(ctx context.Context) {
 	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)

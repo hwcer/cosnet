@@ -41,7 +41,7 @@ func (this *Message) Path() string {
 	return string(this.data[0:this.path])
 }
 
-// Body 消息体数据
+// Body 消息体数据  [0,,,,10,11,12 .....]
 func (this *Message) Body() []byte {
 	return this.data[this.path:]
 }
