@@ -2,9 +2,11 @@ package cosnet
 
 import (
 	"bytes"
+	"encoding/binary"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/logger"
 	"io"
+	"reflect"
 )
 
 // Message 默认使用路径模式集中注册协议
@@ -109,25 +111,42 @@ func (this *Message) Marshal(code int32, path string, body interface{}) (err err
 	} else {
 		return err
 	}
-
-	var data []byte
+	//var data []byte
 	switch v := body.(type) {
 	case []byte:
-		data = v
+		n, err = buffer.Write(v)
+	case string:
+		n, err = buffer.Write([]byte(v))
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
+		if err = binary.Write(buffer, binary.BigEndian, v); err == nil {
+			n = buffer.Len() - int(this.path)
+		}
 	default:
-		data, err = Options.MessageMarshal(body)
+		var data []byte
+		if data, err = Options.MessageMarshal(body); err == nil {
+			n, err = buffer.Write(data)
+		}
 	}
 	if err != nil {
 		return err
 	}
-	if n, err = buffer.Write(data); err == nil {
-		this.body = uint32(n)
-	}
+	this.body = uint32(n)
 	this.data = buffer.Bytes()
 	return nil
 }
 
 // Unmarshal 解析Message body
-func (this *Message) Unmarshal(i interface{}) error {
-	return Options.MessageUnmarshal(this.data[this.path:], i)
+func (this *Message) Unmarshal(i interface{}) (err error) {
+	body := this.Body()
+	switch i.(type) {
+	case []byte:
+		reflect.Indirect(reflect.ValueOf(i)).SetBytes(body)
+	case string:
+		reflect.Indirect(reflect.ValueOf(i)).SetString(string(body))
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
+		err = binary.Read(bytes.NewReader(body), binary.BigEndian, i)
+	default:
+		err = Options.MessageUnmarshal(body, i)
+	}
+	return
 }

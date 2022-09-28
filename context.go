@@ -1,8 +1,14 @@
 package cosnet
 
+import "github.com/hwcer/cosgo/message"
+
 type Context struct {
 	*Message
 	Socket *Socket
+}
+
+func (this *Context) Bind(i interface{}) error {
+	return this.Message.Unmarshal(i)
 }
 
 func (this *Context) Write(code int32, path string, data interface{}) error {
@@ -23,4 +29,11 @@ func (this *Context) Reply(code int32, data interface{}) error {
 // Acquire 获取一个空消息体
 func (this *Context) Acquire() *Message {
 	return this.Socket.Agents.Acquire()
+}
+
+func (this *Context) Error(err interface{}) *message.Message {
+	return message.Error(err)
+}
+func (this *Context) Errorf(code int, err interface{}, args ...interface{}) *message.Message {
+	return message.Errorf(code, err, args)
 }
