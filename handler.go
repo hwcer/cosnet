@@ -11,7 +11,7 @@ type handleCaller interface {
 	Caller(node *registry.Node, c *Context) interface{}
 }
 type HandlerCaller func(node *registry.Node, c *Context) (interface{}, error)
-type HandlerSerialize func(c *Context, reply interface{}) (newReply interface{})
+type HandlerSerialize func(c *Context, reply interface{}) error
 
 type Handler struct {
 	caller    HandlerCaller
@@ -64,10 +64,6 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{},
 }
 
 func (this *Handler) Serialize(c *Context, reply interface{}) error {
-	if reply != nil {
-
-	}
-
 	if reply == nil {
 		c.Socket.Agents.Release(c.Message)
 		return nil
@@ -76,7 +72,6 @@ func (this *Handler) Serialize(c *Context, reply interface{}) error {
 	} else {
 		return Serialize(c, reply)
 	}
-
 }
 
 func Serialize(c *Context, reply interface{}) (err error) {
