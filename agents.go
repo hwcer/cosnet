@@ -168,20 +168,21 @@ func (this *Agents) handle(socket *Socket, msg *Message) {
 			logger.Info("server handle error:%v\n%v", err, string(debug.Stack()))
 		}
 	}()
-	c := &Context{Socket: socket, Message: msg}
 	var err error
-	path := c.Path()
+	path := msg.Path()
 	if i := strings.Index(path, "?"); i >= 0 {
 		path = path[0:i]
 	}
 	node, ok := this.registry.Match(path)
 	if !ok {
+		this.Emit(EventTypeMessage, socket, msg)
 		return
 	}
 	handler, _ := node.Handler().(*Handler)
 	if handler == nil {
 		return
 	}
+	c := &Context{Socket: socket, Message: msg}
 	reply, err := handler.Caller(node, c)
 	if err == nil {
 		err = handler.Serialize(c, reply)

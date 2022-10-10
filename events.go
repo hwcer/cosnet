@@ -16,6 +16,7 @@ const (
 	EventTypeReconnected                      //重登录
 	EventTypeReplaced                         //被顶号
 	EventTypeDestroyed                        //销毁所有信息
+	EventTypeMessage                          //所有未注册的消息
 )
 
 type EventsFunc func(*Socket, interface{}) bool

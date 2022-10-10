@@ -137,12 +137,13 @@ func (this *Message) Marshal(code int32, path string, body interface{}) (err err
 
 // Unmarshal 解析Message body
 func (this *Message) Unmarshal(i interface{}) (err error) {
+	v := reflect.Indirect(reflect.ValueOf(i))
 	body := this.Body()
-	switch i.(type) {
+	switch v.Interface().(type) {
 	case []byte:
-		reflect.Indirect(reflect.ValueOf(i)).SetBytes(body)
+		v.SetBytes(body)
 	case string:
-		reflect.Indirect(reflect.ValueOf(i)).SetString(string(body))
+		v.SetString(string(body))
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
 		err = binary.Read(bytes.NewReader(body), binary.BigEndian, i)
 	default:
