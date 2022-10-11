@@ -1,6 +1,6 @@
 package cosnet
 
-import "github.com/hwcer/cosgo/binding"
+import "github.com/hwcer/cosgo/binder"
 
 type NetType uint8
 
@@ -27,11 +27,11 @@ var bindingMimeType = make(map[BindingType]string)
 var bindingTypeDefault BindingType = BindingTypeJson
 
 func init() {
-	bindingMimeType[BindingTypeXml] = binding.MIMEXML
-	bindingMimeType[BindingTypeJson] = binding.MIMEJSON
-	bindingMimeType[BindingTypeYaml] = binding.MIMEYAML
-	bindingMimeType[BindingTypePostForm] = binding.MIMEPOSTForm
-	bindingMimeType[BindingTypeProtoBuff] = binding.MIMEPROTOBUF
+	bindingMimeType[BindingTypeXml] = binder.MIMEXML
+	bindingMimeType[BindingTypeJson] = binder.MIMEJSON
+	bindingMimeType[BindingTypeYaml] = binder.MIMEYAML
+	bindingMimeType[BindingTypePostForm] = binder.MIMEPOSTForm
+	bindingMimeType[BindingTypeProtoBuff] = binder.MIMEPROTOBUF
 }
 
 // SetBindingType 设置默认绑定类型

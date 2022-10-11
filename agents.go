@@ -38,8 +38,9 @@ func New(ctx context.Context) *Agents {
 
 type Agents struct {
 	*smap.Array
-	scc      *utils.SCC
-	pool     sync.Pool
+	scc  *utils.SCC
+	pool sync.Pool
+
 	Players  *Players                   //存储用户登录信息
 	listener map[EventType][]EventsFunc //事件监听
 	registry *registry.Registry

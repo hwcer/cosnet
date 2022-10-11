@@ -3,10 +3,8 @@ package cosnet
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/logger"
 	"io"
-	"reflect"
 )
 
 // Message 默认使用路径模式集中注册协议
@@ -50,15 +48,9 @@ func (this *Message) Body() []byte {
 
 // Parse 解析二进制头并填充到对应字段
 func (this *Message) Parse(head []byte) error {
-	if err := utils.BytesToInt(head[0:4], &this.code); err != nil {
-		return err
-	}
-	if err := utils.BytesToInt(head[4:6], &this.path); err != nil {
-		return err
-	}
-	if err := utils.BytesToInt(head[6:10], &this.body); err != nil {
-		return err
-	}
+	this.code = int32(binary.BigEndian.Uint32(head[0:4]))
+	this.path = binary.BigEndian.Uint16(head[4:6])
+	this.body = binary.BigEndian.Uint32(head[6:10])
 	if this.body > Options.MaxDataSize {
 		logger.Debug("包体太长，可能是包头错误,path:%v,body:%v", this.path, this.body)
 		return ErrMsgDataSizeTooLong
@@ -68,21 +60,14 @@ func (this *Message) Parse(head []byte) error {
 
 // Bytes 生成二进制文件
 func (this *Message) Bytes() (b []byte, err error) {
-	buffer := &bytes.Buffer{}
-	if err = utils.IntToBuffer(buffer, this.code); err != nil {
-		return
-	}
-	if err = utils.IntToBuffer(buffer, this.path); err != nil {
-		return
-	}
-	if err = utils.IntToBuffer(buffer, this.body); err != nil {
-		return
-	}
 	size := this.Len()
+	b = make([]byte, 0, size+MessageHead)
+	binary.BigEndian.AppendUint32(b, uint32(this.code))
+	binary.BigEndian.AppendUint16(b, this.path)
+	binary.BigEndian.AppendUint32(b, this.body)
 	if size > 0 {
-		_, err = buffer.Write(this.data[0:size])
+		copy(b, this.data[0:size])
 	}
-	b = buffer.Bytes()
 	return
 }
 
@@ -97,57 +82,24 @@ func (this *Message) Write(r io.Reader) (n int, err error) {
 	return io.ReadFull(r, this.data)
 }
 
-func (this *Message) Reader() io.Reader {
-	return bytes.NewReader(this.data)
-}
-
 // Marshal 将一个对象放入Message.data
-func (this *Message) Marshal(code int32, path string, body interface{}) (err error) {
+func (this *Message) Marshal(code int32, path string, body interface{}) error {
 	this.code = code
 	buffer := bytes.NewBuffer(this.data[:0])
-	var n int
-	if n, err = buffer.WriteString(path); err == nil {
+	if n, err := buffer.WriteString(path); err == nil {
 		this.path = uint16(n)
 	} else {
 		return err
 	}
-	//var data []byte
-	switch v := body.(type) {
-	case []byte:
-		n, err = buffer.Write(v)
-	case string:
-		n, err = buffer.Write([]byte(v))
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
-		if err = binary.Write(buffer, binary.BigEndian, v); err == nil {
-			n = buffer.Len() - int(this.path)
-		}
-	default:
-		var data []byte
-		if data, err = Options.MessageMarshal(body); err == nil {
-			n, err = buffer.Write(data)
-		}
-	}
-	if err != nil {
+	if err := Options.MessageBinder.Encode(buffer, body); err != nil {
 		return err
 	}
-	this.body = uint32(n)
+	this.body = uint32(buffer.Len() - int(this.path))
 	this.data = buffer.Bytes()
 	return nil
 }
 
 // Unmarshal 解析Message body
 func (this *Message) Unmarshal(i interface{}) (err error) {
-	v := reflect.Indirect(reflect.ValueOf(i))
-	body := this.Body()
-	switch v.Interface().(type) {
-	case []byte:
-		v.SetBytes(body)
-	case string:
-		v.SetString(string(body))
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
-		err = binary.Read(bytes.NewReader(body), binary.BigEndian, i)
-	default:
-		err = Options.MessageUnmarshal(body, i)
-	}
-	return
+	return Options.MessageBinder.Unmarshal(this.Body(), i)
 }
