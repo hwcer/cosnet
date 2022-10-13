@@ -62,9 +62,9 @@ func (this *Message) Parse(head []byte) error {
 func (this *Message) Bytes() (b []byte, err error) {
 	size := this.Len()
 	b = make([]byte, 0, size+MessageHead)
-	binary.BigEndian.AppendUint32(b, uint32(this.code))
-	binary.BigEndian.AppendUint16(b, this.path)
-	binary.BigEndian.AppendUint32(b, this.body)
+	b = binary.BigEndian.AppendUint32(b, uint32(this.code))
+	b = binary.BigEndian.AppendUint16(b, this.path)
+	b = binary.BigEndian.AppendUint32(b, this.body)
 	if size > 0 {
 		copy(b, this.data[0:size])
 	}
