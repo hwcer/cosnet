@@ -61,12 +61,12 @@ func (this *Message) Parse(head []byte) error {
 // Bytes 生成二进制文件
 func (this *Message) Bytes() (b []byte, err error) {
 	size := this.Len()
-	b = make([]byte, 0, size+MessageHead)
-	b = binary.BigEndian.AppendUint32(b, uint32(this.code))
-	b = binary.BigEndian.AppendUint16(b, this.path)
-	b = binary.BigEndian.AppendUint32(b, this.body)
+	b = make([]byte, size+MessageHead)
+	binary.BigEndian.PutUint32(b[0:4], uint32(this.code))
+	binary.BigEndian.PutUint16(b[4:6], this.path)
+	binary.BigEndian.PutUint32(b[6:10], this.body)
 	if size > 0 {
-		copy(b, this.data[0:size])
+		copy(b[MessageHead:], this.data[0:size])
 	}
 	return
 }
