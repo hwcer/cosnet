@@ -208,9 +208,7 @@ func (this *Socket) readMsgTrue(head []byte) (r bool) {
 	//logger.Debug("READ HEAD:%v", head)
 	msg := this.Agents.Acquire()
 	defer func() {
-		if !r {
-			this.Agents.Release(msg)
-		}
+		this.Agents.Release(msg)
 	}()
 	err := msg.Parse(head)
 	if err != nil {

@@ -2,9 +2,10 @@ package cosnet
 
 import (
 	"context"
+	"fmt"
+	"github.com/hwcer/cosgo/binder"
 	"github.com/hwcer/cosgo/smap"
 	"github.com/hwcer/cosgo/utils"
-	"github.com/hwcer/logger"
 	"github.com/hwcer/registry"
 	"net"
 	"runtime/debug"
@@ -30,6 +31,7 @@ func New(ctx context.Context) *Agents {
 	i.pool.New = func() interface{} {
 		return &Message{}
 	}
+	i.Binder = binder.New(binder.EncodingTypeJson)
 	i.Players = NewPlayers(i)
 	i.Array.NewSetter = newSetter
 	i.scc.CGO(i.heartbeat)
@@ -38,9 +40,9 @@ func New(ctx context.Context) *Agents {
 
 type Agents struct {
 	*smap.Array
-	scc  *utils.SCC
-	pool sync.Pool
-
+	scc      *utils.SCC
+	pool     sync.Pool
+	Binder   binder.Interface
 	Players  *Players                   //存储用户登录信息
 	listener map[EventType][]EventsFunc //事件监听
 	registry *registry.Registry
@@ -164,12 +166,16 @@ func (this *Agents) Broadcast(msg *Message, filter func(*Socket) bool) {
 }
 
 func (this *Agents) handle(socket *Socket, msg *Message) {
+	var err error
 	defer func() {
-		if err := recover(); err != nil {
-			logger.Info("server handle error:%v\n%v", err, string(debug.Stack()))
+		if e := recover(); e != nil {
+			err = fmt.Errorf("server handle error:%v\n%v", err, string(debug.Stack()))
+		}
+		if err != nil {
+			this.Errorf(socket, err)
 		}
 	}()
-	var err error
+
 	path := msg.Path()
 	if i := strings.Index(path, "?"); i >= 0 {
 		path = path[0:i]
@@ -184,13 +190,16 @@ func (this *Agents) handle(socket *Socket, msg *Message) {
 		return
 	}
 	c := &Context{Socket: socket, Message: msg}
-	reply, err := handler.Caller(node, c)
-	if err == nil {
-		err = handler.Serialize(c, reply)
-	}
+	var reply interface{}
+	reply, err = handler.Caller(node, c)
 	if err != nil {
-		this.Errorf(socket, err)
+		return
 	}
+	var re *Message
+	if re, err = handler.Serialize(c, reply); err == nil && re != nil {
+		_ = socket.Write(re)
+	}
+
 }
 
 // 11v9

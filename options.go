@@ -1,7 +1,5 @@
 package cosnet
 
-import "github.com/hwcer/cosgo/binder"
-
 var Options = struct {
 	MaxDataSize          uint32 //包体最大长度
 	WriteChanSize        int32  //写通道缓存
@@ -16,7 +14,6 @@ var Options = struct {
 	ClientReconnectMax  uint16 //断线重连最大尝试次数
 	ClientReconnectTime uint16 //断线重连每次等待时间(MS) ClientReconnectTime * ReconnectNum
 
-	MessageBinder   binder.Interface
 	UdpServerWorker int //UDP工作进程数量
 }{
 	MaxDataSize:    1024 * 1024,
@@ -30,7 +27,6 @@ var Options = struct {
 
 	ClientReconnectMax:  1000,
 	ClientReconnectTime: 5000,
-
-	MessageBinder:   binder.New(binder.EncodingTypeJson),
+	
 	UdpServerWorker: 64,
 }

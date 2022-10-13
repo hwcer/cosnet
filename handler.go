@@ -1,7 +1,6 @@
 package cosnet
 
 import (
-	"github.com/hwcer/cosgo/message"
 	"github.com/hwcer/logger"
 	"github.com/hwcer/registry"
 	"reflect"
@@ -11,7 +10,7 @@ type handleCaller interface {
 	Caller(node *registry.Node, c *Context) interface{}
 }
 type HandlerCaller func(node *registry.Node, c *Context) (interface{}, error)
-type HandlerSerialize func(c *Context, reply interface{}) error
+type HandlerSerialize func(c *Context, reply interface{}) (*Message, error)
 
 type Handler struct {
 	caller    HandlerCaller
@@ -63,23 +62,18 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{},
 	return
 }
 
-func (this *Handler) Serialize(c *Context, reply interface{}) error {
+func (this *Handler) Serialize(c *Context, reply interface{}) (*Message, error) {
 	if reply == nil {
-		c.Socket.Agents.Release(c.Message)
-		return nil
+		return nil, nil
 	} else if this.serialize != nil {
 		return this.serialize(c, reply)
 	} else {
-		return Serialize(c, reply)
-	}
-}
-
-func Serialize(c *Context, reply interface{}) (err error) {
-	switch v := reply.(type) {
-	case []byte:
-		return c.Reply(0, v)
-	default:
-		msg := message.Parse(reply)
-		return c.Reply(int32(msg.Code), []byte(msg.Data))
+		if msg, ok := reply.(*Message); ok {
+			return msg, nil
+		} else if err, ok2 := reply.(error); ok2 {
+			return c.Error(err), nil
+		} else {
+			return c.Acquire(0, c.Path(), reply)
+		}
 	}
 }

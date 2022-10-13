@@ -3,6 +3,7 @@ package cosnet
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/hwcer/cosgo/binder"
 	"github.com/hwcer/logger"
 	"io"
 )
@@ -83,7 +84,7 @@ func (this *Message) Write(r io.Reader) (n int, err error) {
 }
 
 // Marshal 将一个对象放入Message.data
-func (this *Message) Marshal(code int32, path string, body interface{}) error {
+func (this *Message) Marshal(code int32, path string, body interface{}, bind binder.Interface) error {
 	this.code = code
 	buffer := bytes.NewBuffer(this.data[:0])
 	if n, err := buffer.WriteString(path); err == nil {
@@ -91,7 +92,7 @@ func (this *Message) Marshal(code int32, path string, body interface{}) error {
 	} else {
 		return err
 	}
-	if err := Options.MessageBinder.Encode(buffer, body); err != nil {
+	if err := bind.Encode(buffer, body); err != nil {
 		return err
 	}
 	this.body = uint32(buffer.Len() - int(this.path))
@@ -100,6 +101,6 @@ func (this *Message) Marshal(code int32, path string, body interface{}) error {
 }
 
 // Unmarshal 解析Message body
-func (this *Message) Unmarshal(i interface{}) (err error) {
-	return Options.MessageBinder.Unmarshal(this.Body(), i)
+func (this *Message) Unmarshal(i interface{}, bind binder.Interface) (err error) {
+	return bind.Unmarshal(this.Body(), i)
 }
