@@ -71,19 +71,15 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{},
 }
 
 func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
-	if reply == nil {
-		return nil
-	}
 	if this.serialize != nil {
 		reply, err = this.serialize(c, reply)
 	}
-	if err != nil {
-		return c.Error(err)
+	if err != nil || reply == nil {
+		return err
 	}
 	if e, ok := reply.(error); ok {
 		return c.Error(e)
 	}
-
 	if msg, ok := reply.(*Message); ok {
 		_ = c.Socket.Write(msg)
 	} else {
