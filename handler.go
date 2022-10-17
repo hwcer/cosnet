@@ -9,11 +9,13 @@ import (
 type handleCaller interface {
 	Caller(node *registry.Node, c *Context) interface{}
 }
+type HandlerFilter func(node *registry.Node) bool
 type HandlerCaller func(node *registry.Node, c *Context) (interface{}, error)
-type HandlerSerialize func(c *Context, reply interface{}) (*Message, error)
+type HandlerSerialize func(c *Context, reply interface{}) (interface{}, error)
 
 type Handler struct {
 	caller    HandlerCaller
+	filter    HandlerFilter
 	serialize HandlerSerialize
 }
 
@@ -21,12 +23,18 @@ func (this *Handler) Use(src interface{}) {
 	if v, ok := src.(HandlerCaller); ok {
 		this.caller = v
 	}
+	if v, ok := src.(HandlerFilter); ok {
+		this.filter = v
+	}
 	if v, ok := src.(HandlerSerialize); ok {
 		this.serialize = v
 	}
 }
 
 func (this *Handler) Filter(node *registry.Node) bool {
+	if this.filter != nil {
+		return this.filter(node)
+	}
 	if node.IsFunc() {
 		_, ok := node.Method().(func(*Context) interface{})
 		return ok
@@ -62,18 +70,24 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{},
 	return
 }
 
-func (this *Handler) Serialize(c *Context, reply interface{}) (*Message, error) {
+func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
 	if reply == nil {
-		return nil, nil
-	} else if this.serialize != nil {
-		return this.serialize(c, reply)
-	} else {
-		if msg, ok := reply.(*Message); ok {
-			return msg, nil
-		} else if err, ok2 := reply.(error); ok2 {
-			return c.Error(err), nil
-		} else {
-			return c.Acquire(0, c.Path(), reply)
-		}
+		return nil
 	}
+	if this.serialize != nil {
+		reply, err = this.serialize(c, reply)
+	}
+	if err != nil {
+		return c.Error(err)
+	}
+	if e, ok := reply.(error); ok {
+		return c.Error(e)
+	}
+
+	if msg, ok := reply.(*Message); ok {
+		_ = c.Socket.Write(msg)
+	} else {
+		err = c.Write(0, c.Path(), reply)
+	}
+	return
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/hwcer/cosgo/binder"
 	"github.com/hwcer/cosgo/smap"
 	"github.com/hwcer/cosgo/utils"
+	"github.com/hwcer/logger"
 	"github.com/hwcer/registry"
 	"net"
 	"runtime/debug"
@@ -31,7 +32,7 @@ func New(ctx context.Context) *Agents {
 	i.pool.New = func() interface{} {
 		return &Message{}
 	}
-	i.Binder = binder.New(binder.EncodingTypeJson)
+	i.Binder = binder.New(binder.MIMEJSON)
 	i.Players = NewPlayers(i)
 	i.Array.NewSetter = newSetter
 	i.scc.CGO(i.heartbeat)
@@ -100,11 +101,7 @@ func (this *Agents) Release(i *Message) {
 func (this *Agents) Service(name string, handler ...interface{}) *registry.Service {
 	service := this.registry.Service(name)
 	if service.Handler == nil {
-		h := &Handler{}
-		service.Handler = h
-		service.On(registry.FilterEventTypeFunc, h.Filter)
-		service.On(registry.FilterEventTypeMethod, h.Filter)
-		service.On(registry.FilterEventTypeStruct, h.Filter)
+		service.Handler = &Handler{}
 	}
 	if h, ok := service.Handler.(*Handler); ok {
 		for _, i := range handler {
@@ -189,17 +186,15 @@ func (this *Agents) handle(socket *Socket, msg *Message) {
 	if handler == nil {
 		return
 	}
-	c := &Context{Socket: socket, Message: msg}
+	c := &Context{Socket: socket, Message: msg, Binder: this.Binder}
 	var reply interface{}
 	reply, err = handler.Caller(node, c)
 	if err != nil {
 		return
 	}
-	var re *Message
-	if re, err = handler.Serialize(c, reply); err == nil && re != nil {
-		_ = socket.Write(re)
+	if err = handler.Serialize(c, reply); err != nil {
+		logger.Error(err)
 	}
-
 }
 
 // 11v9
