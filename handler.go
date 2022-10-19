@@ -61,7 +61,7 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{},
 	if node.IsFunc() {
 		f := node.Method().(func(*Context) interface{})
 		reply = f(c)
-	} else if s, ok := node.Method().(handleCaller); ok {
+	} else if s, ok := node.Binder().(handleCaller); ok {
 		reply = s.Caller(node, c)
 	} else {
 		r := node.Call(c)
@@ -80,10 +80,5 @@ func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
 	if e, ok := reply.(error); ok {
 		return c.Error(e)
 	}
-	if msg, ok := reply.(*Message); ok {
-		_ = c.Socket.Write(msg)
-	} else {
-		err = c.Write(0, c.Path(), reply)
-	}
-	return
+	return c.Write(0, c.Path(), reply)
 }

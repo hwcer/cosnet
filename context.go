@@ -23,18 +23,6 @@ func (this *Context) Write(code int32, path string, data interface{}) (err error
 	return
 }
 
-// Acquire 获取一个消息体,如果中途 放弃使用（没有使用 socket.write(msg)）记得归还
-func (this *Context) Acquire(code int32, path string, data interface{}) (msg *Message, err error) {
-	msg = this.Socket.Agents.Acquire()
-	defer func() {
-		if err != nil {
-			this.Socket.Agents.Release(msg)
-		}
-	}()
-	err = msg.Marshal(code, path, data, this.Binder)
-	return
-}
-
 // Error 使用当前路径向客户端写入一个默认错误码的信息
 func (this *Context) Error(err interface{}) error {
 	return this.Errorf(0, err)
@@ -47,4 +35,16 @@ func (this *Context) Errorf(code int32, format interface{}, args ...interface{})
 		code = -9999
 	}
 	return this.Write(code, this.Path(), txt)
+}
+
+// Acquire 获取一个消息体,如果中途 放弃使用（没有使用 socket.write(msg)）记得归还
+func (this *Context) Acquire(code int32, path string, data interface{}) (msg *Message, err error) {
+	msg = this.Socket.Agents.Acquire()
+	defer func() {
+		if err != nil {
+			this.Socket.Agents.Release(msg)
+		}
+	}()
+	err = msg.Marshal(code, path, data, this.Binder)
+	return
 }
