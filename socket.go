@@ -241,7 +241,7 @@ func (this *Socket) writeMsgTrue(msg *Message) (r bool) {
 	for writeCount < len(data) {
 		n, err = this.conn.Write(data[writeCount:])
 		if err != nil {
-			return false
+			return this.Errorf(err)
 		}
 		writeCount += n
 	}
