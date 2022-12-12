@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/hwcer/cosgo/binder"
-	"github.com/hwcer/logger"
 	"io"
 )
 
@@ -53,7 +52,6 @@ func (this *Message) Parse(head []byte) error {
 	this.path = binary.BigEndian.Uint16(head[4:6])
 	this.body = binary.BigEndian.Uint32(head[6:10])
 	if this.body > Options.MaxDataSize {
-		logger.Debug("包体太长，可能是包头错误,path:%v,body:%v", this.path, this.body)
 		return ErrMsgDataSizeTooLong
 	}
 	return nil

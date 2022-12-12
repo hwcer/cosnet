@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/hwcer/cosgo/binder"
-	"github.com/hwcer/cosgo/smap"
+	"github.com/hwcer/cosgo/storage"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/logger"
 	"github.com/hwcer/registry"
@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-func newSetter(id smap.MID, val interface{}) smap.Setter {
+func newSetter(id storage.MID, val interface{}) storage.Setter {
 	d := val.(*Socket)
-	d.Data = smap.NewData(id, nil)
+	d.Data = *storage.NewData(id, nil)
 	return d
 }
 
@@ -25,7 +25,7 @@ func New(ctx context.Context) *Agents {
 	i := &Agents{
 		scc:      utils.NewSCC(ctx),
 		pool:     sync.Pool{},
-		Array:    smap.New(1024),
+		Array:    *storage.New(1024),
 		listener: make(map[EventType][]EventsFunc),
 		registry: registry.New(nil),
 	}
@@ -40,7 +40,7 @@ func New(ctx context.Context) *Agents {
 }
 
 type Agents struct {
-	*smap.Array
+	storage.Array
 	scc      *utils.SCC
 	pool     sync.Pool
 	Binder   binder.Interface
@@ -78,7 +78,7 @@ func (this *Agents) New(conn net.Conn, netType NetType) (socket *Socket, err err
 }
 
 func (this *Agents) Range(fn func(socket *Socket) bool) {
-	this.Array.Range(func(v smap.Setter) bool {
+	this.Array.Range(func(v storage.Setter) bool {
 		if s, ok := v.(*Socket); ok {
 			return fn(s)
 		}
@@ -130,8 +130,8 @@ func (this *Agents) Socket(id interface{}) (socket *Socket) {
 	switch id.(type) {
 	case string:
 		socket = this.Players.Socket(id.(string))
-	case smap.MID:
-		if r, ok := this.Array.Get(id.(smap.MID)); ok {
+	case storage.MID:
+		if r, ok := this.Array.Get(id.(storage.MID)); ok {
 			socket, _ = r.(*Socket)
 		}
 	}
@@ -143,8 +143,8 @@ func (this *Agents) Player(id interface{}) (player *Player) {
 	switch id.(type) {
 	case string:
 		player = this.Players.Player(id.(string))
-	case smap.MID:
-		if d, ok := this.Array.Get(id.(smap.MID)); ok {
+	case storage.MID:
+		if d, ok := this.Array.Get(id.(storage.MID)); ok {
 			r := d.Get()
 			player, _ = r.(*Player)
 		}
@@ -166,7 +166,7 @@ func (this *Agents) handle(socket *Socket, msg *Message) {
 	var err error
 	defer func() {
 		if e := recover(); e != nil {
-			err = fmt.Errorf("server handle error:%v\n%v", err, string(debug.Stack()))
+			err = fmt.Errorf("server handle error:%v\n%v", e, string(debug.Stack()))
 		}
 		if err != nil {
 			this.Errorf(socket, err)

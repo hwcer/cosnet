@@ -2,7 +2,7 @@ package cosnet
 
 import (
 	"context"
-	"github.com/hwcer/cosgo/smap"
+	"github.com/hwcer/cosgo/storage"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/logger"
 	"io"
@@ -27,7 +27,7 @@ func NewSocket(engine *Agents, conn net.Conn, netType NetType) *Socket {
 
 // Socket 基础网络连接
 type Socket struct {
-	*smap.Data
+	storage.Data
 	conn      net.Conn
 	stop      chan struct{} //stop
 	Agents    *Agents       //Agents
@@ -68,11 +68,6 @@ func (this *Socket) disconnect() {
 		}
 	}
 }
-
-//stopped 读写协程是否关闭或者正在关闭
-//func (this *Socket) stopped() bool {
-//	return this.alive
-//}
 
 // Close 强制关闭,无法重连
 func (this *Socket) Close(msg ...*Message) {
@@ -179,6 +174,7 @@ func (this *Socket) readMsg(ctx context.Context) {
 	for {
 		_, err = io.ReadFull(this.conn, head)
 		if err != nil {
+			this.Errorf(err)
 			return
 		}
 		if !this.readMsgTrue(head) {
@@ -212,8 +208,8 @@ func (this *Socket) readMsgTrue(head []byte) (r bool) {
 	}()
 	err := msg.Parse(head)
 	if err != nil {
-		logger.Debug("READ HEAD ERR:%v", err)
-		return
+		logger.Debug("READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
+		return this.Errorf(err)
 	}
 	//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
 	if msg.Len() > 0 {
