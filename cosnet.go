@@ -3,8 +3,8 @@ package cosnet
 import (
 	"errors"
 	"fmt"
+	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/utils"
-	"github.com/hwcer/logger"
 	"net"
 	"strings"
 	"time"

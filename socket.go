@@ -2,9 +2,9 @@ package cosnet
 
 import (
 	"context"
+	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/storage"
 	"github.com/hwcer/cosgo/utils"
-	"github.com/hwcer/logger"
 	"io"
 	"net"
 	"sync/atomic"

@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/hwcer/cosgo"
+	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosnet"
-	"github.com/hwcer/logger"
 	"github.com/spf13/pflag"
 	"time"
 )
@@ -66,7 +66,7 @@ func socketDestroyed(socket *cosnet.Socket, _ interface{}) bool {
 
 func ping(c *cosnet.Context) interface{} {
 	var v string
-	if err := c.Unmarshal(&v); err != nil {
+	if err := c.Bind(&v); err != nil {
 		c.Socket.Errorf(err)
 	} else {
 		logger.Info("收到消息:%v %v", c.Path(), v)

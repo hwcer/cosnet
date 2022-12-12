@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/hwcer/cosgo"
+	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosnet"
-	"github.com/hwcer/logger"
 	"github.com/spf13/pflag"
 )
 
@@ -47,7 +47,7 @@ func socketError(socket *cosnet.Socket, err interface{}) bool {
 func socketHeartbeat(socket *cosnet.Socket, _ interface{}) bool {
 	socket.KeepAlive()
 	m := socket.Agents.Acquire()
-	if err := m.Marshal(0, C2SPing, "hi"); err == nil {
+	if err := m.Marshal(0, C2SPing, "hi", socket.Agents.Binder); err == nil {
 		socket.Write(m)
 	}
 	return true
