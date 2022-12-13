@@ -168,6 +168,11 @@ func (this *Socket) processMsg(socket *Socket, msg *Message) {
 }
 
 func (this *Socket) readMsg(ctx context.Context) {
+	defer func() {
+		if e := recover(); e != nil {
+			logger.Error(e)
+		}
+	}()
 	defer this.disconnect()
 	var err error
 	head := make([]byte, MessageHead)
@@ -184,6 +189,11 @@ func (this *Socket) readMsg(ctx context.Context) {
 }
 
 func (this *Socket) writeMsg(ctx context.Context) {
+	defer func() {
+		if e := recover(); e != nil {
+			logger.Error(e)
+		}
+	}()
 	defer this.disconnect()
 	var msg *Message
 	for {
