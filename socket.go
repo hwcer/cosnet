@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/storage"
-	"github.com/hwcer/cosgo/utils"
 	"io"
 	"net"
 	"sync/atomic"
@@ -20,8 +19,8 @@ func NewSocket(engine *Agents, conn net.Conn, netType NetType) *Socket {
 	socket := &Socket{conn: conn, Agents: engine, netType: netType}
 	socket.stop = make(chan struct{})
 	socket.cwrite = make(chan *Message, Options.WriteChanSize)
-	socket.Agents.scc.CGO(socket.readMsg)
-	socket.Agents.scc.CGO(socket.writeMsg)
+	socket.Agents.scc.SGO(socket.readMsg, socket.Error)
+	socket.Agents.scc.SGO(socket.writeMsg, socket.Error)
 	return socket
 }
 
@@ -47,9 +46,8 @@ func (this *Socket) destroy() {
 		atomic.StoreInt32(&this.status, StatusTypeDestroying)
 	}
 	if this.cwrite != nil {
-		utils.Try(func() {
-			close(this.cwrite)
-		})
+		defer func() { _ = recover() }()
+		close(this.cwrite)
 	}
 	this.Agents.Remove(this.Id())
 	this.emit(EventTypeDestroyed)
@@ -80,7 +78,11 @@ func (this *Socket) Close(msg ...*Message) {
 	atomic.StoreInt32(&this.status, StatusTypeDestroying)
 }
 
-func (this *Socket) Errorf(format interface{}, args ...interface{}) bool {
+func (this *Socket) Error(format any) {
+	this.Agents.Errorf(this, format)
+}
+
+func (this *Socket) Errorf(format any, args ...any) bool {
 	return this.Agents.Errorf(this, format, args...)
 }
 
@@ -168,11 +170,6 @@ func (this *Socket) processMsg(socket *Socket, msg *Message) {
 }
 
 func (this *Socket) readMsg(ctx context.Context) {
-	defer func() {
-		if e := recover(); e != nil {
-			logger.Error(e)
-		}
-	}()
 	defer this.disconnect()
 	var err error
 	head := make([]byte, MessageHead)
@@ -189,11 +186,6 @@ func (this *Socket) readMsg(ctx context.Context) {
 }
 
 func (this *Socket) writeMsg(ctx context.Context) {
-	defer func() {
-		if e := recover(); e != nil {
-			logger.Error(e)
-		}
-	}()
 	defer this.disconnect()
 	var msg *Message
 	for {
