@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/utils"
+	"github.com/soheilhy/cmux"
+	"io"
 	"net"
 	"strings"
 	"time"
 )
 
 // Listen 启动柜服务器,监听address
-func (this *Agents) Listen(address string) (listener interface{}, err error) {
+func (this *Agents) Listen(address string) (listener net.Listener, err error) {
 	addr := utils.NewAddress(address)
 	if addr.Scheme == "" {
 		return nil, errors.New("address scheme empty")
@@ -43,14 +45,13 @@ func (this *Agents) NewTcpServer(network, address string) (listener net.Listener
 	if err != nil {
 		return
 	}
-	this.GO(func() {
-		this.tcpListener(listener)
-	})
+	this.TCPListener(listener)
 	return
 }
 
-func (this *Agents) NewUdpServer(network, address string) (server *udpServer, err error) {
-	server = &udpServer{dict: make(map[string]*udpConn), agents: this}
+// NewUdpServer UDP server 暂时不提供 net.Listener
+func (this *Agents) NewUdpServer(network, address string) (ln net.Listener, err error) {
+	server := &udpServer{dict: make(map[string]*udpConn), agents: this}
 	server.addr, err = net.ResolveUDPAddr(network, address)
 	if err != nil {
 		return
@@ -69,15 +70,20 @@ func (this *Agents) NewUdpServer(network, address string) (server *udpServer, er
 	return
 }
 
-func (this *Agents) tcpListener(listener net.Listener) {
+func (this *Agents) TCPListener(ln net.Listener) {
+	this.GO(func() {
+		this.tcpListener(ln)
+	})
+}
+func (this *Agents) tcpListener(ln net.Listener) {
 	defer func() {
-		_ = listener.Close()
+		_ = ln.Close()
 		if err := recover(); err != nil {
 			logger.Error(err)
 		}
 	}()
 	for !this.Stopped() {
-		conn, err := listener.Accept()
+		conn, err := ln.Accept()
 		if err == nil {
 			_, err = this.New(conn, NetTypeServer)
 		}
@@ -103,4 +109,20 @@ func (this *Agents) tryConnect(s string) (net.Conn, error) {
 		}
 	}
 	return nil, errors.New("Failed to create to udpServer")
+}
+
+/*
+	Matcher cmux Matcher
+
+m := cmux.New(ln)
+ln := m.Match(Matcher())
+Agents.TCPListener(ln)
+*/
+func Matcher() cmux.Matcher {
+	magic := MagicNumber()
+	return func(r io.Reader) bool {
+		buf := make([]byte, 1)
+		n, _ := r.Read(buf)
+		return n == 1 && buf[0] == magic
+	}
 }

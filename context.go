@@ -15,7 +15,7 @@ func (this *Context) Bind(i interface{}) error {
 	return this.Message.Unmarshal(i, this.Binder)
 }
 
-func (this *Context) Write(code int32, path string, data interface{}) (err error) {
+func (this *Context) Write(code int16, path string, data interface{}) (err error) {
 	var msg *Message
 	if msg, err = this.Acquire(code, path, data); err == nil {
 		_ = this.Socket.Write(msg)
@@ -29,7 +29,7 @@ func (this *Context) Error(err interface{}) error {
 }
 
 // Errorf 使用当前路径向客户端写入一个特定错误码的信息
-func (this *Context) Errorf(code int32, format interface{}, args ...interface{}) error {
+func (this *Context) Errorf(code int16, format interface{}, args ...interface{}) error {
 	txt := utils.Sprintf(format, args)
 	if code == 0 {
 		code = -9999
@@ -38,7 +38,7 @@ func (this *Context) Errorf(code int32, format interface{}, args ...interface{})
 }
 
 // Acquire 获取一个消息体,如果中途 放弃使用（没有使用 socket.write(msg)）记得归还
-func (this *Context) Acquire(code int32, path string, data interface{}) (msg *Message, err error) {
+func (this *Context) Acquire(code int16, path string, data interface{}) (msg *Message, err error) {
 	msg = this.Socket.Agents.Acquire()
 	defer func() {
 		if err != nil {

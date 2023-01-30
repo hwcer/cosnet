@@ -6,6 +6,7 @@ replace github.com/hwcer/cosgo v0.0.1 => ../cosgo
 
 require (
 	github.com/hwcer/cosgo v0.0.1
+	github.com/soheilhy/cmux v0.1.4
 	github.com/spf13/pflag v1.0.5
 )
 
@@ -38,6 +39,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	go.mongodb.org/mongo-driver v1.11.1 // indirect
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
+	golang.org/x/net v0.0.0-20211123203042-d83791d6bcd9 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20220128215802-99c3d69c2c27 // indirect
 	golang.org/x/text v0.3.7 // indirect

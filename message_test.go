@@ -1,12 +1,13 @@
 package cosnet
 
 import (
+	"github.com/hwcer/cosgo/binder"
 	"testing"
 )
 
 func TestMessage(t *testing.T) {
 	m := &Message{}
-	_ = m.Marshal(-100, "path", "body")
+	_ = m.Marshal(-100, "path", "body", binder.Json)
 
 	b, _ := m.Bytes()
 	t.Logf("M1:%+v", m)

@@ -182,7 +182,7 @@ func (this *Agents) handle(socket *Socket, msg *Message) {
 		this.Emit(EventTypeMessage, socket, msg)
 		return
 	}
-	handler, _ := node.Handler().(*Handler)
+	handler := node.Service.Handler.(*Handler)
 	if handler == nil {
 		return
 	}
