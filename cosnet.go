@@ -13,7 +13,7 @@ import (
 )
 
 // Listen 启动柜服务器,监听address
-func (this *Agents) Listen(address string) (listener net.Listener, err error) {
+func (this *Sockets) Listen(address string) (listener net.Listener, err error) {
 	addr := utils.NewAddress(address)
 	if addr.Scheme == "" {
 		return nil, errors.New("address scheme empty")
@@ -32,7 +32,7 @@ func (this *Agents) Listen(address string) (listener net.Listener, err error) {
 }
 
 // Connect 连接服务器address
-func (this *Agents) Connect(address string) (socket *Socket, err error) {
+func (this *Sockets) Connect(address string) (socket *Socket, err error) {
 	conn, err := this.tryConnect(address)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func (this *Agents) Connect(address string) (socket *Socket, err error) {
 	return this.New(conn, NetTypeClient)
 }
 
-func (this *Agents) NewTcpServer(network, address string) (listener net.Listener, err error) {
+func (this *Sockets) NewTcpServer(network, address string) (listener net.Listener, err error) {
 	listener, err = net.Listen(network, address)
 	if err != nil {
 		return
@@ -50,7 +50,7 @@ func (this *Agents) NewTcpServer(network, address string) (listener net.Listener
 }
 
 // NewUdpServer UDP server 暂时不提供 net.Listener
-func (this *Agents) NewUdpServer(network, address string) (ln net.Listener, err error) {
+func (this *Sockets) NewUdpServer(network, address string) (ln net.Listener, err error) {
 	server := &udpServer{dict: make(map[string]*udpConn), agents: this}
 	server.addr, err = net.ResolveUDPAddr(network, address)
 	if err != nil {
@@ -70,12 +70,12 @@ func (this *Agents) NewUdpServer(network, address string) (ln net.Listener, err 
 	return
 }
 
-func (this *Agents) TCPListener(ln net.Listener) {
+func (this *Sockets) TCPListener(ln net.Listener) {
 	this.GO(func() {
 		this.tcpListener(ln)
 	})
 }
-func (this *Agents) tcpListener(ln net.Listener) {
+func (this *Sockets) tcpListener(ln net.Listener) {
 	defer func() {
 		_ = ln.Close()
 		if err := recover(); err != nil {
@@ -93,7 +93,7 @@ func (this *Agents) tcpListener(ln net.Listener) {
 	}
 }
 
-func (this *Agents) tryConnect(s string) (net.Conn, error) {
+func (this *Sockets) tryConnect(s string) (net.Conn, error) {
 	address := utils.NewAddress(s)
 	if address.Scheme == "" {
 		address.Scheme = "tcp"
@@ -112,11 +112,10 @@ func (this *Agents) tryConnect(s string) (net.Conn, error) {
 }
 
 /*
-	Matcher cmux Matcher
-
+Matcher cmux Matcher
 m := cmux.New(ln)
 ln := m.Match(Matcher())
-Agents.TCPListener(ln)
+Sockets.TCPListener(ln)
 */
 func Matcher() cmux.Matcher {
 	magic := MagicNumber()

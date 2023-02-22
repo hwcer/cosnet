@@ -8,7 +8,7 @@ import (
 type EventType uint8
 
 const (
-	EventTypeError       EventType = iota + 1 //用户级别错误
+	EventTypeError       EventType = iota + 1 //系统级别错误
 	EventTypeHeartbeat                        //心跳事件
 	EventTypeConnected                        //连接成功
 	EventTypeVerified                         //身份认证
@@ -21,11 +21,11 @@ const (
 
 type EventsFunc func(*Socket, interface{}) bool
 
-func (this *Agents) On(e EventType, f EventsFunc) {
+func (this *Sockets) On(e EventType, f EventsFunc) {
 	this.listener[e] = append(this.listener[e], f)
 }
 
-func (this *Agents) Emit(e EventType, s *Socket, attach ...interface{}) (r bool) {
+func (this *Sockets) Emit(e EventType, s *Socket, attach ...interface{}) (r bool) {
 	var v interface{}
 	if len(attach) > 0 {
 		v = attach[0]
@@ -39,14 +39,15 @@ func (this *Agents) Emit(e EventType, s *Socket, attach ...interface{}) (r bool)
 }
 
 // Errorf 抛出一个异常
-func (this *Agents) Errorf(s *Socket, format interface{}, args ...interface{}) (r bool) {
+func (this *Sockets) Errorf(s *Socket, format interface{}, args ...interface{}) {
 	if len(args) == 0 {
-		return this.Emit(EventTypeError, s, format)
+		this.Emit(EventTypeError, s, format)
+		return
 	}
 	v, ok := format.(string)
 	if !ok {
 		v = fmt.Sprintf("%v", format)
 	}
 	err := fmt.Errorf(v, args...)
-	return this.Emit(EventTypeError, s, err)
+	this.Emit(EventTypeError, s, err)
 }

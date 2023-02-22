@@ -11,6 +11,10 @@ const (
 	magicNumber byte = 0x78 //78
 )
 
+var MessageByteCap int = 200 //最小分配内存,越大越浪费内存,但会减少内存分配次数
+
+var Binder binder.Interface = binder.New(binder.MIMEJSON)
+
 func MagicNumber() byte {
 	return magicNumber
 }
@@ -82,10 +86,14 @@ func (this *Message) Bytes() (b []byte, err error) {
 // Write 从conn中读取数据写入到data
 func (this *Message) Write(r io.Reader) (n int, err error) {
 	size := this.Len()
-	if len(this.data) > size {
+	if cap(this.data) >= size {
 		this.data = this.data[0:size]
-	} else if len(this.data) < size {
-		this.data = make([]byte, size)
+	} else {
+		if size > MessageByteCap {
+			this.data = make([]byte, size, size)
+		} else {
+			this.data = make([]byte, size, MessageByteCap)
+		}
 	}
 	return io.ReadFull(r, this.data)
 }
@@ -99,6 +107,9 @@ func (this *Message) Marshal(code int16, path string, body interface{}, bind bin
 	} else {
 		return err
 	}
+	if bind == nil {
+		bind = Binder
+	}
 	if err := bind.Encode(buffer, body); err != nil {
 		return err
 	}
@@ -109,5 +120,13 @@ func (this *Message) Marshal(code int16, path string, body interface{}, bind bin
 
 // Unmarshal 解析Message body
 func (this *Message) Unmarshal(i interface{}, bind binder.Interface) (err error) {
+	if bind == nil {
+		bind = Binder
+	}
 	return bind.Unmarshal(this.Body(), i)
+}
+
+func (this *Message) Release() {
+	this.code, this.path, this.body = 0, 0, 0
+	this.data = this.data[:0]
 }

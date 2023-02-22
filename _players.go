@@ -6,7 +6,7 @@ import (
 )
 
 // NewPlayers 登录之后生成 player数据
-func NewPlayers(engine *Agents) *Players {
+func NewPlayers(engine *Sockets) *Players {
 	p := &Players{Map: sync.Map{}}
 	engine.On(EventTypeDestroyed, p.destroy)
 	return p
@@ -98,7 +98,7 @@ func (this *Socket) Verify(uuid string, attach interface{}) (err error) {
 	player.attach = attach
 	player.mutex.Lock()
 	defer player.mutex.Unlock()
-	if v, loaded := this.Agents.Players.Map.LoadOrStore(uuid, player); loaded {
+	if v, loaded := this.Sockets.Players.Map.LoadOrStore(uuid, player); loaded {
 		p, _ := v.(*Player)
 		err = this.reconnect(p, attach)
 	} else {
@@ -118,11 +118,24 @@ func (this *Socket) reconnect(player *Player, attach interface{}) error {
 		return ErrAuthDataExist
 	}
 	player.attach = attach
-	if player.socket != nil && player.socket.status != StatusTypeDestroying && player.socket.cwrite != nil {
+	if player.socket != nil && player.socket.status != StatusTypeClose && player.socket.cwrite != nil {
 		player.socket.cwrite, this.cwrite = this.cwrite, player.socket.cwrite
 	}
 	player.replace(this)
 	this.Set(player)
 	this.emit(EventTypeReconnected)
 	return nil
+}
+func (this *Socket) Player() *Player {
+	v := this.Data.Get()
+	if v == nil {
+		return nil
+	}
+	p, _ := v.(*Player)
+	return p
+}
+
+// Verified 是否身份认证
+func (this *Socket) Verified() bool {
+	return this.Get() != nil
 }

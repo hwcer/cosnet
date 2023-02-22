@@ -3,15 +3,12 @@ package cosnet
 import (
 	"context"
 	"fmt"
-	"github.com/hwcer/cosgo/binder"
-	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosgo/storage"
 	"github.com/hwcer/cosgo/utils"
 	"net"
 	"runtime/debug"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -21,63 +18,62 @@ func newSetter(id storage.MID, val interface{}) storage.Setter {
 	return d
 }
 
-func New(ctx context.Context) *Agents {
-	i := &Agents{
-		scc:      utils.NewSCC(ctx),
-		pool:     sync.Pool{},
+func New(ctx context.Context) *Sockets {
+	i := &Sockets{
+		scc: utils.NewSCC(ctx),
+		//pool:     sync.Pool{},
 		Array:    *storage.New(1024),
 		listener: make(map[EventType][]EventsFunc),
 		registry: registry.New(nil),
 	}
-	i.pool.New = func() interface{} {
-		return &Message{}
-	}
-	i.Binder = binder.New(binder.MIMEJSON)
-	i.Players = NewPlayers(i)
+	//i.pool.New = func() interface{} {
+	//	return &Message{}
+	//}
+	//i.Binder = binder.New(binder.MIMEJSON)
+	//i.Players = NewPlayers(i)
 	i.Array.NewSetter = newSetter
 	i.scc.CGO(i.heartbeat)
 	return i
 }
 
-type Agents struct {
+type Sockets struct {
 	storage.Array
-	scc      *utils.SCC
-	pool     sync.Pool
-	Binder   binder.Interface
-	Players  *Players                   //存储用户登录信息
+	scc *utils.SCC
+	//pool     sync.Pool
+	//Players  *Players                   //存储用户登录信息
 	listener map[EventType][]EventsFunc //事件监听
 	registry *registry.Registry
 }
 
-func (this *Agents) GO(f func()) {
+func (this *Sockets) GO(f func()) {
 	this.scc.GO(f)
 }
 
-func (this *Agents) CGO(f func(ctx context.Context)) {
+func (this *Sockets) CGO(f func(ctx context.Context)) {
 	this.scc.CGO(f)
 }
 
-func (this *Agents) SCC() *utils.SCC {
+func (this *Sockets) SCC() *utils.SCC {
 	return this.scc
 }
 
-func (this *Agents) Stopped() bool {
+func (this *Sockets) Stopped() bool {
 	return this.scc.Stopped()
 }
 
-func (this *Agents) Size() int {
+func (this *Sockets) Size() int {
 	return this.Array.Size()
 }
 
 // New 创建新socket并自动加入到Sockets管理器
-func (this *Agents) New(conn net.Conn, netType NetType) (socket *Socket, err error) {
+func (this *Sockets) New(conn net.Conn, netType NetType) (socket *Socket, err error) {
 	socket = NewSocket(this, conn, netType)
 	this.Array.Create(socket)
 	this.Emit(EventTypeConnected, socket)
 	return
 }
 
-func (this *Agents) Range(fn func(socket *Socket) bool) {
+func (this *Sockets) Range(fn func(socket *Socket) bool) {
 	this.Array.Range(func(v storage.Setter) bool {
 		if s, ok := v.(*Socket); ok {
 			return fn(s)
@@ -86,19 +82,7 @@ func (this *Agents) Range(fn func(socket *Socket) bool) {
 	})
 }
 
-func (this *Agents) Acquire() *Message {
-	r, _ := this.pool.Get().(*Message)
-	return r
-}
-
-func (this *Agents) Release(i *Message) {
-	i.code = 0
-	i.path = 0
-	i.body = 0
-	this.pool.Put(i)
-}
-
-func (this *Agents) Service(name string, handler ...interface{}) *registry.Service {
+func (this *Sockets) Service(name string, handler ...interface{}) *registry.Service {
 	service := this.registry.Service(name)
 	if service.Handler == nil {
 		service.Handler = &Handler{}
@@ -111,12 +95,12 @@ func (this *Agents) Service(name string, handler ...interface{}) *registry.Servi
 	return service
 }
 
-func (this *Agents) Register(i interface{}, prefix ...string) error {
+func (this *Sockets) Register(i interface{}, prefix ...string) error {
 	service := this.Service("")
 	return service.Register(i, prefix...)
 }
 
-func (this *Agents) Close(timeout time.Duration) error {
+func (this *Sockets) Close(timeout time.Duration) error {
 	if !this.scc.Cancel() {
 		return nil
 	}
@@ -126,43 +110,38 @@ func (this *Agents) Close(timeout time.Duration) error {
 // Socket 通过SOCKETID获取SOCKET
 // id.(string) 通过用户ID获取
 // id.(MID) 通过SOCKET ID获取
-func (this *Agents) Socket(id interface{}) (socket *Socket) {
-	switch id.(type) {
-	case string:
-		socket = this.Players.Socket(id.(string))
-	case storage.MID:
-		if r, ok := this.Array.Get(id.(storage.MID)); ok {
-			socket, _ = r.(*Socket)
-		}
+func (this *Sockets) Socket(id storage.MID) (socket *Socket) {
+	if r, ok := this.Array.Get(id); ok {
+		socket, _ = r.(*Socket)
 	}
 	return
 }
 
 // Player 获取用户对象,id同this.Socket(id)
-func (this *Agents) Player(id interface{}) (player *Player) {
-	switch id.(type) {
-	case string:
-		player = this.Players.Player(id.(string))
-	case storage.MID:
-		if d, ok := this.Array.Get(id.(storage.MID)); ok {
-			r := d.Get()
-			player, _ = r.(*Player)
-		}
-	}
-	return
-}
+//func (this *Sockets) Player(id interface{}) (player *Player) {
+//	switch id.(type) {
+//	case string:
+//		player = this.Players.Player(id.(string))
+//	case storage.MID:
+//		if d, ok := this.Array.Get(id.(storage.MID)); ok {
+//			r := d.Get()
+//			player, _ = r.(*Player)
+//		}
+//	}
+//	return
+//}
 
 // Broadcast 广播,filter 过滤函数，如果不为nil且返回false则不对当期socket进行发送消息
-func (this *Agents) Broadcast(msg *Message, filter func(*Socket) bool) {
+func (this *Sockets) Broadcast(path string, data any, filter func(*Socket) bool) {
 	this.Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
-			sock.Write(msg)
+			_ = sock.Send(0, path, data)
 		}
 		return true
 	})
 }
 
-func (this *Agents) handle(socket *Socket, msg *Message) {
+func (this *Sockets) handle(socket *Socket, msg *Message) {
 	var err error
 	defer func() {
 		if e := recover(); e != nil {
@@ -186,20 +165,18 @@ func (this *Agents) handle(socket *Socket, msg *Message) {
 	if handler == nil {
 		return
 	}
-	c := &Context{Socket: socket, Message: msg, Binder: this.Binder}
+	c := &Context{Socket: socket, Message: msg}
 	var reply interface{}
 	reply, err = handler.Caller(node, c)
 	if err != nil {
 		return
 	}
-	if err = handler.Serialize(c, reply); err != nil {
-		logger.Error(err)
-	}
+	err = handler.Serialize(c, reply)
 }
 
 // 11v9
 // heartbeat 启动协程定时清理无效用户
-func (this *Agents) heartbeat(ctx context.Context) {
+func (this *Sockets) heartbeat(ctx context.Context) {
 	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
 	ticker := time.NewTimer(t)
 	defer ticker.Stop()
@@ -213,7 +190,7 @@ func (this *Agents) heartbeat(ctx context.Context) {
 		}
 	}
 }
-func (this *Agents) doHeartbeat() {
+func (this *Sockets) doHeartbeat() {
 	this.Range(func(socket *Socket) bool {
 		socket.Heartbeat()
 		this.Emit(EventTypeHeartbeat, socket)

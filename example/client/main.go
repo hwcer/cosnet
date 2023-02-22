@@ -7,12 +7,12 @@ import (
 	"github.com/spf13/pflag"
 )
 
-var server *cosnet.Agents
+var server *cosnet.Sockets
 
 const C2SPing = "C2sHeartbeat"
 
 func init() {
-	pflag.String("address", "tcp://10.26.17.20:3001", "server address")
+	pflag.String("address", "tcp://127.0.0.1:3001", "server address")
 }
 
 func main() {
@@ -46,9 +46,8 @@ func socketError(socket *cosnet.Socket, err interface{}) bool {
 }
 func socketHeartbeat(socket *cosnet.Socket, _ interface{}) bool {
 	socket.KeepAlive()
-	m := socket.Agents.Acquire()
-	if err := m.Marshal(0, C2SPing, "hi", socket.Agents.Binder); err == nil {
-		socket.Write(m)
+	if err := socket.Send(0, C2SPing, "hi"); err != nil {
+		socket.Errorf(err)
 	}
 	return true
 }
