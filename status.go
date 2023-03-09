@@ -34,7 +34,7 @@ func (this *Status) Has(ss ...StatusType) bool {
 // Close 强制关闭,无法重登陆
 func (this *Status) Close(f func(bool)) {
 	this.mutex.Lock()
-	defer this.mutex.Lock()
+	defer this.mutex.Unlock()
 	var r bool
 	if this.status == StatusTypeConnect {
 		r = true
@@ -48,7 +48,7 @@ func (this *Status) Close(f func(bool)) {
 // Disconnect 掉线,包含网络超时，网络错误
 func (this *Status) Disconnect(f func(bool)) {
 	this.mutex.Lock()
-	defer this.mutex.Lock()
+	defer this.mutex.Unlock()
 	var r bool
 	if this.status == StatusTypeConnect {
 		r = true
@@ -66,7 +66,7 @@ func (this *Status) Disconnect(f func(bool)) {
 // Destroy 彻底销毁,移除资源
 func (this *Status) Destroy(f func(bool)) {
 	this.mutex.Lock()
-	defer this.mutex.Lock()
+	defer this.mutex.Unlock()
 	var r bool
 	if this.status != StatusTypeDestroyed {
 		r = true
@@ -80,7 +80,7 @@ func (this *Status) Destroy(f func(bool)) {
 // Reconnect 重新登录
 func (this *Status) Reconnect(f func(bool)) {
 	this.mutex.Lock()
-	defer this.mutex.Lock()
+	defer this.mutex.Unlock()
 	var r bool
 	if this.status == StatusTypeDisconnect {
 		r = true
