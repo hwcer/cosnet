@@ -42,10 +42,10 @@ func (this *Context) Errorf(code int16, format interface{}, args ...interface{})
 
 // Acquire 获取一个消息体,如果中途 放弃使用（没有使用 socket.write(msg)）记得归还
 //func (this *Context) Acquire(code int16, path string, data interface{}) (msg *Message, err error) {
-//	msg = this.Socket.Sockets.Acquire()
+//	msg = this.Socket.Server.Acquire()
 //	defer func() {
 //		if err != nil {
-//			this.Socket.Sockets.Release(msg)
+//			this.Socket.Server.Release(msg)
 //		}
 //	}()
 //	err = msg.Marshal(code, path, data, this.Binder)

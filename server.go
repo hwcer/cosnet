@@ -18,63 +18,70 @@ func newSetter(id storage.MID, val interface{}) storage.Setter {
 	return d
 }
 
-func New(ctx context.Context) *Sockets {
-	i := &Sockets{
-		scc: utils.NewSCC(ctx),
-		//pool:     sync.Pool{},
-		Array:    *storage.New(1024),
+func New(ctx context.Context) *Server {
+	i := &Server{
+		scc:      utils.NewSCC(ctx),
 		listener: make(map[EventType][]EventsFunc),
 		registry: registry.New(nil),
 	}
-	//i.pool.New = func() interface{} {
-	//	return &Message{}
-	//}
-	//i.Binder = binder.New(binder.MIMEJSON)
-	//i.Players = NewPlayers(i)
-	i.Array.NewSetter = newSetter
+	i.Players = NewPlayers()
+	i.Sockets = storage.New(1024)
+	i.Sockets.NewSetter = newSetter
 	i.scc.CGO(i.heartbeat)
 	return i
 }
 
-type Sockets struct {
-	storage.Array
-	scc *utils.SCC
-	//pool     sync.Pool
-	//Players  *Players                   //存储用户登录信息
+type Server struct {
+	scc      *utils.SCC
+	Players  *Players //存储用户登录信息
+	Sockets  *storage.Array
 	listener map[EventType][]EventsFunc //事件监听
 	registry *registry.Registry
 }
 
-func (this *Sockets) GO(f func()) {
+func (this *Server) GO(f func()) {
 	this.scc.GO(f)
 }
 
-func (this *Sockets) CGO(f func(ctx context.Context)) {
+func (this *Server) CGO(f func(ctx context.Context)) {
 	this.scc.CGO(f)
 }
 
-func (this *Sockets) SCC() *utils.SCC {
+func (this *Server) SCC() *utils.SCC {
 	return this.scc
 }
 
-func (this *Sockets) Stopped() bool {
+func (this *Server) Stopped() bool {
 	return this.scc.Stopped()
 }
 
-func (this *Sockets) Size() int {
-	return this.Array.Size()
+func (this *Server) Size() int {
+	return this.Sockets.Size()
 }
 
 // New 创建新socket并自动加入到Sockets管理器
-func (this *Sockets) New(conn net.Conn, netType NetType) (socket *Socket, err error) {
+func (this *Server) New(conn net.Conn, netType NetType) (socket *Socket, err error) {
 	socket = NewSocket(this, conn, netType)
-	this.Array.Create(socket)
+	this.Sockets.Create(socket)
 	this.Emit(EventTypeConnected, socket)
 	return
 }
 
-func (this *Sockets) Range(fn func(socket *Socket) bool) {
-	this.Array.Range(func(v storage.Setter) bool {
+// Remove 彻底销毁,移除资源
+func (this *Server) Remove(socket *Socket) {
+	defer func() { _ = recover() }()
+	socket.status.Destroy(func(r bool) {
+		if !r {
+			return
+		}
+		this.Players.Remove(socket)
+		this.Sockets.Remove(socket.Id())
+		socket.emit(EventTypeDestroyed)
+	})
+}
+
+func (this *Server) Range(fn func(socket *Socket) bool) {
+	this.Sockets.Range(func(v storage.Setter) bool {
 		if s, ok := v.(*Socket); ok {
 			return fn(s)
 		}
@@ -82,7 +89,7 @@ func (this *Sockets) Range(fn func(socket *Socket) bool) {
 	})
 }
 
-func (this *Sockets) Service(name string, handler ...interface{}) *registry.Service {
+func (this *Server) Service(name string, handler ...interface{}) *registry.Service {
 	service := this.registry.Service(name)
 	if service.Handler == nil {
 		service.Handler = &Handler{}
@@ -95,12 +102,12 @@ func (this *Sockets) Service(name string, handler ...interface{}) *registry.Serv
 	return service
 }
 
-func (this *Sockets) Register(i interface{}, prefix ...string) error {
+func (this *Server) Register(i interface{}, prefix ...string) error {
 	service := this.Service("")
 	return service.Register(i, prefix...)
 }
 
-func (this *Sockets) Close(timeout time.Duration) error {
+func (this *Server) Close(timeout time.Duration) error {
 	if !this.scc.Cancel() {
 		return nil
 	}
@@ -110,29 +117,37 @@ func (this *Sockets) Close(timeout time.Duration) error {
 // Socket 通过SOCKETID获取SOCKET
 // id.(string) 通过用户ID获取
 // id.(MID) 通过SOCKET ID获取
-func (this *Sockets) Socket(id storage.MID) (socket *Socket) {
-	if r, ok := this.Array.Get(id); ok {
-		socket, _ = r.(*Socket)
+func (this *Server) Socket(id any) (socket *Socket) {
+	switch v := id.(type) {
+	case string:
+		if player := this.Players.Get(v); player != nil {
+			socket = player.socket
+		}
+	case storage.MID:
+		if i, ok := this.Sockets.Get(v); ok {
+			socket, _ = i.(*Socket)
+		}
 	}
 	return
 }
 
 // Player 获取用户对象,id同this.Socket(id)
-//func (this *Sockets) Player(id interface{}) (player *Player) {
-//	switch id.(type) {
-//	case string:
-//		player = this.Players.Player(id.(string))
-//	case storage.MID:
-//		if d, ok := this.Array.Get(id.(storage.MID)); ok {
-//			r := d.Get()
-//			player, _ = r.(*Player)
-//		}
-//	}
-//	return
-//}
+func (this *Server) Player(id any) (player *Player) {
+	switch v := id.(type) {
+	case string:
+		player = this.Players.Get(v)
+	case storage.MID:
+		if socket, ok := this.Sockets.Get(v); ok {
+			if r := socket.Get(); r != nil {
+				player, _ = r.(*Player)
+			}
+		}
+	}
+	return
+}
 
 // Broadcast 广播,filter 过滤函数，如果不为nil且返回false则不对当期socket进行发送消息
-func (this *Sockets) Broadcast(path string, data any, filter func(*Socket) bool) {
+func (this *Server) Broadcast(path string, data any, filter func(*Socket) bool) {
 	this.Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
 			_ = sock.Send(0, path, data)
@@ -141,7 +156,7 @@ func (this *Sockets) Broadcast(path string, data any, filter func(*Socket) bool)
 	})
 }
 
-func (this *Sockets) handle(socket *Socket, msg *Message) {
+func (this *Server) handle(socket *Socket, msg *Message) {
 	var err error
 	defer func() {
 		if e := recover(); e != nil {
@@ -176,7 +191,7 @@ func (this *Sockets) handle(socket *Socket, msg *Message) {
 
 // 11v9
 // heartbeat 启动协程定时清理无效用户
-func (this *Sockets) heartbeat(ctx context.Context) {
+func (this *Server) heartbeat(ctx context.Context) {
 	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
 	ticker := time.NewTimer(t)
 	defer ticker.Stop()
@@ -190,7 +205,7 @@ func (this *Sockets) heartbeat(ctx context.Context) {
 		}
 	}
 }
-func (this *Sockets) doHeartbeat() {
+func (this *Server) doHeartbeat() {
 	this.Range(func(socket *Socket) bool {
 		socket.Heartbeat()
 		this.Emit(EventTypeHeartbeat, socket)

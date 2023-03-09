@@ -52,7 +52,7 @@ type udpServer struct {
 	dict        map[string]*udpConn
 	addr        *net.UDPAddr
 	conn        *net.UDPConn
-	agents      *Sockets
+	agents      *Server
 	dictMutex   sync.Mutex
 	listenMutex sync.Mutex
 }

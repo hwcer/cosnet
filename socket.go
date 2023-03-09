@@ -8,13 +8,13 @@ import (
 	"net"
 )
 
-func NewSocket(engine *Sockets, conn net.Conn, netType NetType) *Socket {
-	socket := &Socket{conn: conn, Sockets: engine, netType: netType}
+func NewSocket(engine *Server, conn net.Conn, netType NetType) *Socket {
+	socket := &Socket{conn: conn, server: engine, netType: netType}
 	socket.stop = make(chan struct{})
-	socket.Status = NewStatus()
+	socket.status = NewStatus()
 	socket.cwrite = make(chan *Message, Options.WriteChanSize)
-	socket.Sockets.scc.SGO(socket.readMsg, socket.Errorf)
-	socket.Sockets.scc.SGO(socket.writeMsg, socket.Errorf)
+	socket.server.scc.SGO(socket.readMsg, socket.Errorf)
+	socket.server.scc.SGO(socket.writeMsg, socket.Errorf)
 	return socket
 }
 
@@ -23,15 +23,14 @@ type Socket struct {
 	storage.Data
 	conn    net.Conn
 	stop    chan struct{}
-	Status  *Status
-	Sockets *Sockets
+	status  *Status
+	server  *Server
 	cwrite  chan *Message //写入通道,仅仅强制关闭的会被CLOSE
 	netType NetType       //网络连接类型
-
 }
 
 func (this *Socket) emit(e EventType) bool {
-	return this.Sockets.Emit(e, this)
+	return this.server.Emit(e, this)
 }
 
 func (this *Socket) close() {
@@ -43,20 +42,21 @@ func (this *Socket) close() {
 }
 
 // destroy 彻底销毁,移除资源
-func (this *Socket) destroy() {
-	defer func() { _ = recover() }()
-	this.Status.Destroy(func(r bool) {
-		if !r {
-			return
-		}
-		this.Sockets.Remove(this.Id())
-		this.emit(EventTypeDestroyed)
-	})
-}
+//func (this *Socket) destroy() {
+//	defer func() { _ = recover() }()
+//	this.status.Destroy(func(r bool) {
+//		if !r {
+//			return
+//		}
+//		this.server.Players.Remove(this)
+//		this.server.Sockets.Remove(this.Id())
+//		this.emit(EventTypeDestroyed)
+//	})
+//}
 
 // disconnect 掉线,包含网络超时，网络错误
 func (this *Socket) disconnect() {
-	this.Status.Disconnect(func(r bool) {
+	this.status.Disconnect(func(r bool) {
 		if !r {
 			return
 		}
@@ -69,7 +69,7 @@ func (this *Socket) disconnect() {
 // Close 强制关闭,无法重连
 func (this *Socket) Close(msg ...*Message) {
 	defer func() { _ = recover() }()
-	this.Status.Close(func(r bool) {
+	this.status.Close(func(r bool) {
 		if !r {
 			return
 		}
@@ -79,13 +79,17 @@ func (this *Socket) Close(msg ...*Message) {
 	})
 }
 
-func (this *Socket) Errorf(format any) {
-	this.Sockets.Errorf(this, format)
+func (this *Socket) Player() (r *Player) {
+	v := this.Data.Get()
+	if v != nil {
+		r, _ = v.(*Player)
+	}
+	return
 }
 
-//func (this *Socket) Errorf(format any, args ...any) bool {
-//	return this.Sockets.Errorf(this, format, args...)
-//}
+func (this *Socket) Errorf(format any) {
+	this.server.Errorf(this, format)
+}
 
 func (this *Socket) NetType() NetType {
 	return this.netType
@@ -93,13 +97,13 @@ func (this *Socket) NetType() NetType {
 
 // Heartbeat 每一次Heartbeat() heartbeat计数加1
 func (this *Socket) Heartbeat() {
-	heartbeat := this.Status.Heartbeat()
-	switch this.Status.status {
+	heartbeat := this.status.Heartbeat()
+	switch this.status.status {
 	case StatusTypeClosed:
-		this.destroy()
+		this.server.Remove(this)
 	case StatusTypeDisconnect:
 		if this.Get() == nil || Options.SocketReconnectTime == 0 || heartbeat > Options.SocketReconnectTime {
-			this.destroy()
+			this.server.Remove(this)
 		}
 	case StatusTypeClosing:
 		if len(this.cwrite) == 0 || heartbeat >= Options.SocketDestroyingTime {
@@ -114,7 +118,7 @@ func (this *Socket) Heartbeat() {
 
 // KeepAlive 任何行为都清空heartbeat
 func (this *Socket) KeepAlive() {
-	this.Status.KeepAlive()
+	this.status.KeepAlive()
 }
 
 func (this *Socket) LocalAddr() net.Addr {
@@ -151,7 +155,7 @@ func (this *Socket) Write(m *Message) (err error) {
 			err = values.Error(e)
 		}
 	}()
-	if m == nil || this.cwrite == nil || !this.Status.Has(StatusTypeConnect, StatusTypeDisconnect) {
+	if m == nil || this.cwrite == nil || !this.status.Has(StatusTypeConnect, StatusTypeDisconnect) {
 		return ErrSocketClosed
 	}
 	select {
@@ -165,7 +169,7 @@ func (this *Socket) Write(m *Message) (err error) {
 
 func (this *Socket) processMsg(socket *Socket, msg *Message) {
 	this.KeepAlive()
-	this.Sockets.handle(socket, msg)
+	this.server.handle(socket, msg)
 }
 
 func (this *Socket) readMsg(ctx context.Context) {
@@ -209,14 +213,14 @@ func (this *Socket) readMsgTrue(head []byte) (r bool) {
 	}()
 	err := msg.Parse(head)
 	if err != nil {
-		this.Sockets.Errorf(this, "READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
+		this.server.Errorf(this, "READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
 		return false
 	}
 	//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
 	if msg.Len() > 0 {
 		_, err = msg.Write(this.conn)
 		if err != nil {
-			this.Sockets.Errorf(this, "READ BODY ERR:%v", err)
+			this.server.Errorf(this, "READ BODY ERR:%v", err)
 			return false
 		}
 	}

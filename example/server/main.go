@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var server *cosnet.Sockets
+var server *cosnet.Server
 
 func init() {
 	pflag.String("address", "tcp://0.0.0.0:3000", "server address")

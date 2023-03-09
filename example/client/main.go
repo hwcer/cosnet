@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-var server *cosnet.Sockets
+var server *cosnet.Server
 
 const C2SPing = "C2sHeartbeat"
 

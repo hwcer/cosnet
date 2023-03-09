@@ -2,10 +2,10 @@ module github.com/hwcer/cosnet
 
 go 1.18
 
-replace github.com/hwcer/cosgo v0.0.1 => ../cosgo
+replace github.com/hwcer/cosgo v0.0.0 => ../cosgo
 
 require (
-	github.com/hwcer/cosgo v0.0.1
+	github.com/hwcer/cosgo v0.0.0
 	github.com/soheilhy/cmux v0.1.4
 	github.com/spf13/pflag v1.0.5
 )
