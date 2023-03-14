@@ -60,8 +60,8 @@ func (this *Server) Size() int {
 }
 
 // New 创建新socket并自动加入到Sockets管理器
-func (this *Server) New(conn net.Conn, netType NetType) (socket *Socket, err error) {
-	socket = NewSocket(this, conn, netType)
+func (this *Server) New(conn net.Conn) (socket *Socket, err error) {
+	socket = NewSocket(this, conn)
 	this.Sockets.Create(socket)
 	this.Emit(EventTypeConnected, socket)
 	return
@@ -70,14 +70,11 @@ func (this *Server) New(conn net.Conn, netType NetType) (socket *Socket, err err
 // Remove 彻底销毁,移除资源
 func (this *Server) Remove(socket *Socket) {
 	defer func() { _ = recover() }()
-	socket.status.Destroy(func(r bool) {
-		if !r {
-			return
-		}
+	if socket.status.Destroy() {
 		this.Players.Remove(socket)
 		this.Sockets.Remove(socket.Id())
 		socket.emit(EventTypeDestroyed)
-	})
+	}
 }
 
 func (this *Server) Range(fn func(socket *Socket) bool) {

@@ -1,94 +1,66 @@
 package cosnet
 
-import "sync"
+import "sync/atomic"
 
-type StatusType int8
+//type StatusType int32
 
 const (
-	StatusTypeConnect StatusType = iota
-	StatusTypeClosing            //强制关闭中
-	StatusTypeClosed             //已经关闭
+	StatusTypeConnect int32 = iota
 	StatusTypeDisconnect
 	StatusTypeDestroyed
 )
 
-func NewStatus() *Status {
-	return &Status{mutex: sync.Mutex{}}
-}
+//func NewStatus() *Status {
+//	return &Status{}
+//}
 
 type Status struct {
-	mutex     sync.Mutex
-	status    StatusType //0-正常，1-断开，2-强制关闭
-	heartbeat uint32     //heartbeat >=timeout 时被标记为超时
+	//mutex     sync.Mutex
+	status    int32  //0-正常，1-断开，2-强制关闭
+	closing   bool   //强制关闭中
+	heartbeat uint32 //heartbeat >=timeout 时被标记为超时
 }
 
-func (this *Status) Has(ss ...StatusType) bool {
-	for _, s := range ss {
-		if this.status == s {
-			return true
-		}
-	}
-	return false
-}
+//func (this *Status) Has(ss ...StatusType) bool {
+//	for _, s := range ss {
+//		if this.status == s {
+//			return true
+//		}
+//	}
+//	return false
+//}
 
 // Close 强制关闭,无法重登陆
-func (this *Status) Close(f func(bool)) {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	var r bool
-	if this.status == StatusTypeConnect {
-		r = true
-		this.status = StatusTypeClosing
+func (this *Status) Close() bool {
+	if this.status == StatusTypeDestroyed || this.closing {
+		return false
 	}
-	if f != nil {
-		f(r)
-	}
+	this.closing = true
+	return true
 }
 
-// Disconnect 掉线,包含网络超时，网络错误
-func (this *Status) Disconnect(f func(bool)) {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	var r bool
-	if this.status == StatusTypeConnect {
-		r = true
-		this.status = StatusTypeDisconnect
-	} else if this.status == StatusTypeClosing {
-		r = true
-		this.status = StatusTypeClosed
-	}
-
-	if f != nil {
-		f(r)
-	}
+// Disabled 是否已经关闭接收消息
+func (this *Status) Disabled() bool {
+	return this.closing || this.status == StatusTypeDestroyed
 }
 
 // Destroy 彻底销毁,移除资源
-func (this *Status) Destroy(f func(bool)) {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	var r bool
+func (this *Status) Destroy() (r bool) {
 	if this.status != StatusTypeDestroyed {
 		r = true
 		this.status = StatusTypeDestroyed
 	}
-	if f != nil {
-		f(r)
-	}
+	return
 }
 
 // Reconnect 重新登录
-func (this *Status) Reconnect(f func(bool)) {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	var r bool
-	if this.status == StatusTypeDisconnect {
-		r = true
-		this.status = StatusTypeConnect
-	}
-	if f != nil {
-		f(r)
-	}
+func (this *Status) Reconnect() bool {
+	return atomic.CompareAndSwapInt32(&this.status, StatusTypeDisconnect, StatusTypeConnect)
+}
+
+// Disconnect 掉线,包含网络超时，网络错误
+func (this *Status) Disconnect() bool {
+	return atomic.CompareAndSwapInt32(&this.status, StatusTypeConnect, StatusTypeDisconnect)
 }
 
 // KeepAlive 任何行为都清空heartbeat

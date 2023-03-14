@@ -30,7 +30,7 @@ type Players struct {
 func (this *Player) replace(socket *Socket) {
 	var old *Socket
 	old, this.socket = this.socket, socket
-	if old.status.Has(StatusTypeConnect) {
+	if !old.status.Disabled() {
 		old.emit(EventTypeReplaced)
 		old.Close()
 	}

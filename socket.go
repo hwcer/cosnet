@@ -8,10 +8,10 @@ import (
 	"net"
 )
 
-func NewSocket(engine *Server, conn net.Conn, netType NetType) *Socket {
-	socket := &Socket{conn: conn, server: engine, netType: netType}
+func NewSocket(srv *Server, conn net.Conn) *Socket {
+	socket := &Socket{conn: conn, server: srv}
 	socket.stop = make(chan struct{})
-	socket.status = NewStatus()
+	//socket.status = NewStatus()
 	socket.cwrite = make(chan *Message, Options.WriteChanSize)
 	socket.server.scc.SGO(socket.readMsg, socket.Errorf)
 	socket.server.scc.SGO(socket.writeMsg, socket.Errorf)
@@ -21,12 +21,12 @@ func NewSocket(engine *Server, conn net.Conn, netType NetType) *Socket {
 // Socket 基础网络连接
 type Socket struct {
 	storage.Data
-	conn    net.Conn
-	stop    chan struct{}
-	status  *Status
-	server  *Server
-	cwrite  chan *Message //写入通道,仅仅强制关闭的会被CLOSE
-	netType NetType       //网络连接类型
+	conn   net.Conn
+	stop   chan struct{}
+	server *Server
+	status Status
+	cwrite chan *Message //写入通道,仅仅强制关闭的会被CLOSE
+	//netType NetType       //网络连接类型
 }
 
 func (this *Socket) emit(e EventType) bool {
@@ -41,42 +41,26 @@ func (this *Socket) close() {
 	_ = this.conn.Close()
 }
 
-// destroy 彻底销毁,移除资源
-//func (this *Socket) destroy() {
-//	defer func() { _ = recover() }()
-//	this.status.Destroy(func(r bool) {
-//		if !r {
-//			return
-//		}
-//		this.server.Players.Remove(this)
-//		this.server.Sockets.Remove(this.Id())
-//		this.emit(EventTypeDestroyed)
-//	})
-//}
-
 // disconnect 掉线,包含网络超时，网络错误
 func (this *Socket) disconnect() {
-	this.status.Disconnect(func(r bool) {
-		if !r {
-			return
-		}
+	if this.status.Disconnect() {
 		this.close()
 		this.KeepAlive()
 		this.emit(EventTypeDisconnect)
-	})
+	}
 }
 
 // Close 强制关闭,无法重连
 func (this *Socket) Close(msg ...*Message) {
-	defer func() { _ = recover() }()
-	this.status.Close(func(r bool) {
-		if !r {
-			return
-		}
-		for _, m := range msg {
-			_ = this.Write(m)
-		}
-	})
+	if !this.status.Close() || len(msg) == 0 {
+		return
+	}
+	defer func() {
+		_ = recover()
+	}()
+	for _, m := range msg {
+		_ = this.write(m)
+	}
 }
 
 func (this *Socket) Player() (r *Player) {
@@ -91,25 +75,25 @@ func (this *Socket) Errorf(format any) {
 	this.server.Errorf(this, format)
 }
 
-func (this *Socket) NetType() NetType {
-	return this.netType
+// Verified 是否已经登录
+func (this *Socket) Verified() bool {
+	return this.Get() != nil
 }
 
 // Heartbeat 每一次Heartbeat() heartbeat计数加1
 func (this *Socket) Heartbeat() {
 	heartbeat := this.status.Heartbeat()
 	switch this.status.status {
-	case StatusTypeClosed:
+	case StatusTypeDestroyed:
 		this.server.Remove(this)
 	case StatusTypeDisconnect:
-		if this.Get() == nil || Options.SocketReconnectTime == 0 || heartbeat > Options.SocketReconnectTime {
+		if !this.Verified() || Options.SocketReconnectTime == 0 || heartbeat > Options.SocketReconnectTime {
 			this.server.Remove(this)
 		}
-	case StatusTypeClosing:
-		if len(this.cwrite) == 0 || heartbeat >= Options.SocketDestroyingTime {
+	default:
+		if this.status.closing && (len(this.cwrite) == 0 || heartbeat >= Options.SocketDestroyingTime) {
 			this.close()
 		}
-	default:
 		if heartbeat >= Options.SocketConnectTime {
 			this.disconnect()
 		}
@@ -155,15 +139,24 @@ func (this *Socket) Write(m *Message) (err error) {
 			err = values.Error(e)
 		}
 	}()
-	if m == nil || this.cwrite == nil || !this.status.Has(StatusTypeConnect, StatusTypeDisconnect) {
+	if this.status.Disabled() {
 		return ErrSocketClosed
+	}
+	if !this.write(m) {
+		err = ErrSocketChannelFull
+	}
+	return
+}
+
+func (this *Socket) write(m *Message) bool {
+	if m == nil || this.cwrite == nil {
+		return true
 	}
 	select {
 	case this.cwrite <- m:
-		return nil
+		return true
 	default:
-		this.Close()
-		return ErrSocketChannelFull
+		return false
 	}
 }
 

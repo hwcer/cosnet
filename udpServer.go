@@ -90,7 +90,7 @@ func (this *udpServer) LoadOrStore(addr *net.UDPAddr) (conn *udpConn) {
 	conn.addr = addr
 	conn.server = this
 	conn.buffer = &bytes.Buffer{}
-	if _, err := this.agents.New(conn, NetTypeServer); err != nil {
+	if _, err := this.agents.New(conn); err != nil {
 		this.dict[name] = conn
 	}
 	return

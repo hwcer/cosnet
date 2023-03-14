@@ -37,7 +37,7 @@ func (this *Server) Connect(address string) (socket *Socket, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return this.New(conn, NetTypeClient)
+	return this.New(conn)
 }
 
 func (this *Server) NewTcpServer(network, address string) (listener net.Listener, err error) {
@@ -85,7 +85,7 @@ func (this *Server) tcpListener(ln net.Listener) {
 	for !this.Stopped() {
 		conn, err := ln.Accept()
 		if err == nil {
-			_, err = this.New(conn, NetTypeServer)
+			_, err = this.New(conn)
 		}
 		if err != nil {
 			logger.Error("listener.Accept Error:%v", err)

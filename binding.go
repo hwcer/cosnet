@@ -2,14 +2,6 @@ package cosnet
 
 import "github.com/hwcer/cosgo/binder"
 
-type NetType uint8
-
-// NetType
-const (
-	NetTypeClient NetType = 1 //client Request
-	NetTypeServer         = 2 //Server Listener
-)
-
 type BindingType uint8
 
 const (
