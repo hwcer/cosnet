@@ -230,7 +230,7 @@ func (this *Socket) writeMsgTrue(msg *Message) (r bool) {
 		this.Errorf(err)
 		return true
 	}
-	//logger.Debug("socket write error,code:%v, data:%v", msg.Code(), msg.Data())
+	//logger.Debug("socket write error,code:%v, data:%v", msg.Code(), msg.data())
 	var n int
 	writeCount := 0
 	for writeCount < len(data) {
