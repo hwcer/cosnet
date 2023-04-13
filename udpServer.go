@@ -3,6 +3,7 @@ package cosnet
 import (
 	"bytes"
 	"context"
+	"github.com/hwcer/cosgo/scc"
 	"net"
 	"sync"
 	"time"
@@ -59,11 +60,11 @@ type udpServer struct {
 
 func (this *udpServer) start() error {
 	for i := 0; i < Options.UdpServerWorker; i++ {
-		this.agents.GO(func() {
+		scc.GO(func() {
 			this.listen()
 		})
 	}
-	this.agents.CGO(this.close)
+	scc.CGO(this.close)
 	return nil
 }
 
@@ -104,7 +105,7 @@ func (this *udpServer) delete(addr *net.UDPAddr) {
 
 func (this *udpServer) listen() {
 	data := make([]byte, 1<<16)
-	for !this.agents.Stopped() {
+	for !scc.Stopped() {
 		this.listenMutex.Lock()
 		n, addr, err := this.conn.ReadFromUDP(data)
 		this.listenMutex.Unlock()

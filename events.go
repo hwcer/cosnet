@@ -22,7 +22,7 @@ const (
 type EventsFunc func(*Socket, interface{}) bool
 
 func (this *Server) On(e EventType, f EventsFunc) {
-	this.listener[e] = append(this.listener[e], f)
+	this.events[e] = append(this.events[e], f)
 }
 
 func (this *Server) Emit(e EventType, s *Socket, attach ...interface{}) (r bool) {
@@ -30,7 +30,7 @@ func (this *Server) Emit(e EventType, s *Socket, attach ...interface{}) (r bool)
 	if len(attach) > 0 {
 		v = attach[0]
 	}
-	for _, f := range this.listener[e] {
+	for _, f := range this.events[e] {
 		if r = f(s, v); !r {
 			return r
 		}

@@ -2,6 +2,7 @@ package cosnet
 
 import (
 	"context"
+	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/storage"
 	"github.com/hwcer/cosgo/values"
 	"io"
@@ -13,8 +14,8 @@ func NewSocket(srv *Server, conn net.Conn) *Socket {
 	socket.stop = make(chan struct{})
 	//socket.status = NewStatus()
 	socket.cwrite = make(chan *Message, Options.WriteChanSize)
-	socket.server.scc.SGO(socket.readMsg, socket.Errorf)
-	socket.server.scc.SGO(socket.writeMsg, socket.Errorf)
+	scc.SGO(socket.readMsg)
+	scc.SGO(socket.writeMsg)
 	return socket
 }
 
@@ -170,9 +171,10 @@ func (this *Socket) readMsg(ctx context.Context) {
 	var err error
 	head := make([]byte, MessageHead)
 	for {
-		_, err = io.ReadFull(this.conn, head)
-		if err != nil {
-			this.Errorf(err)
+		if _, err = io.ReadFull(this.conn, head); err != nil {
+			if err != io.EOF && !scc.Stopped() {
+				this.Errorf(err)
+			}
 			return
 		}
 		if !this.readMsgTrue(head) {

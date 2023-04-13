@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/hwcer/cosgo/registry"
+	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/storage"
-	"github.com/hwcer/cosgo/utils"
 	"net"
 	"runtime/debug"
 	"strings"
@@ -18,41 +18,24 @@ func newSetter(id storage.MID, val interface{}) storage.Setter {
 	return d
 }
 
-func New(ctx context.Context) *Server {
+func New() *Server {
 	i := &Server{
-		scc:      utils.NewSCC(ctx),
-		listener: make(map[EventType][]EventsFunc),
+		events:   make(map[EventType][]EventsFunc),
 		registry: registry.New(nil),
 	}
 	i.Players = NewPlayers()
 	i.Sockets = storage.New(1024)
 	i.Sockets.NewSetter = newSetter
-	i.scc.CGO(i.heartbeat)
+	scc.CGO(i.heartbeat)
 	return i
 }
 
 type Server struct {
-	scc      *utils.SCC
+	events   map[EventType][]EventsFunc //事件监听
+	listener []net.Listener
+	registry *registry.Registry
 	Players  *Players //存储用户登录信息
 	Sockets  *storage.Array
-	listener map[EventType][]EventsFunc //事件监听
-	registry *registry.Registry
-}
-
-func (this *Server) GO(f func()) {
-	this.scc.GO(f)
-}
-
-func (this *Server) CGO(f func(ctx context.Context)) {
-	this.scc.CGO(f)
-}
-
-func (this *Server) SCC() *utils.SCC {
-	return this.scc
-}
-
-func (this *Server) Stopped() bool {
-	return this.scc.Stopped()
 }
 
 func (this *Server) Size() int {
@@ -104,11 +87,11 @@ func (this *Server) Register(i interface{}, prefix ...string) error {
 	return service.Register(i, prefix...)
 }
 
-func (this *Server) Close(timeout time.Duration) error {
-	if !this.scc.Cancel() {
-		return nil
+func (this *Server) Close() (err error) {
+	for _, l := range this.listener {
+		_ = l.Close()
 	}
-	return this.scc.Wait(timeout)
+	return
 }
 
 // Socket 通过SOCKETID获取SOCKET
@@ -197,12 +180,12 @@ func (this *Server) heartbeat(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			utils.Try(this.doHeartbeat)
+			scc.Try(this.doHeartbeat)
 			ticker.Reset(t)
 		}
 	}
 }
-func (this *Server) doHeartbeat() {
+func (this *Server) doHeartbeat(ctx context.Context) {
 	this.Range(func(socket *Socket) bool {
 		socket.Heartbeat()
 		this.Emit(EventTypeHeartbeat, socket)

@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/hwcer/cosgo"
-	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosnet"
+	"github.com/hwcer/logger"
 	"github.com/spf13/pflag"
 )
 
@@ -12,12 +12,11 @@ var server *cosnet.Server
 const C2SPing = "C2sHeartbeat"
 
 func init() {
-	pflag.String("address", "tcp://127.0.0.1:3001", "server address")
+	pflag.String("address", "tcp://127.0.0.1:3000", "server address")
 }
 
 func main() {
-	cosgo.Start(&module{Module: cosgo.NewModule("client")})
-	cosgo.WaitForSystemExit()
+	cosgo.Start(true, &module{Module: cosgo.NewModule("client")})
 }
 
 type module struct {
@@ -26,7 +25,7 @@ type module struct {
 
 func (m *module) Start() error {
 	address := cosgo.Config.GetString("address")
-	server = cosnet.New(cosgo.SCC.Context)
+	server = cosnet.New()
 	_, err := server.Connect(address)
 	if err != nil {
 		return err
@@ -53,17 +52,17 @@ func socketHeartbeat(socket *cosnet.Socket, _ interface{}) bool {
 }
 
 func socketConnected(socket *cosnet.Socket, _ interface{}) bool {
-	logger.Info("socket connected:%v", socket.Id())
+	logger.Debug("socket connected:%v", socket.Id())
 	return true
 }
 
 func socketDisconnect(socket *cosnet.Socket, _ interface{}) bool {
-	logger.Info("socket disconnect:%v", socket.Id())
+	logger.Debug("socket disconnect:%v", socket.Id())
 	return true
 }
 
 func socketDestroyed(socket *cosnet.Socket, _ interface{}) bool {
-	logger.Info("socket destroyed:%v", socket.Id())
+	logger.Debug("socket destroyed:%v", socket.Id())
 	address := cosgo.Config.GetString("address")
 	_, _ = server.Connect(address) //重连
 	return true
@@ -76,6 +75,6 @@ func ping(c *cosnet.Context) interface{} {
 	//} else {
 	//	logger.Info("收到回复:%v %v", c.Path(), v)
 	//}
-	logger.Info("收到回复  PATH:%v   BODY:%v", []byte(c.Path()), c.Body())
+	logger.Debug("收到回复  PATH:%v   BODY:%v", []byte(c.Path()), c.Body())
 	return nil
 }

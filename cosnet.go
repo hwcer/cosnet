@@ -3,8 +3,9 @@ package cosnet
 import (
 	"errors"
 	"fmt"
-	"github.com/hwcer/cosgo/logger"
+	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/utils"
+	"github.com/hwcer/logger"
 	"github.com/soheilhy/cmux"
 	"io"
 	"net"
@@ -71,7 +72,8 @@ func (this *Server) NewUdpServer(network, address string) (ln net.Listener, err 
 }
 
 func (this *Server) TCPListener(ln net.Listener) {
-	this.GO(func() {
+	this.listener = append(this.listener, ln)
+	scc.GO(func() {
 		this.tcpListener(ln)
 	})
 }
@@ -82,12 +84,12 @@ func (this *Server) tcpListener(ln net.Listener) {
 			logger.Error(err)
 		}
 	}()
-	for !this.Stopped() {
+	for !scc.Stopped() {
 		conn, err := ln.Accept()
 		if err == nil {
 			_, err = this.New(conn)
 		}
-		if err != nil {
+		if err != nil && !scc.Stopped() {
 			logger.Error("listener.Accept Error:%v", err)
 		}
 	}
