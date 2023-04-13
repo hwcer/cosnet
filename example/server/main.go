@@ -14,7 +14,6 @@ func init() {
 	pflag.String("address", "tcp://0.0.0.0:3000", "server address")
 }
 func main() {
-	//cosgo.Start(true)
 	cosgo.Start(true, &module{Module: cosgo.NewModule("server")})
 }
 
