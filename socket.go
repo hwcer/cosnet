@@ -1,6 +1,7 @@
 package cosnet
 
 import (
+	"bytes"
 	"context"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/storage"
@@ -72,8 +73,8 @@ func (this *Socket) Player() (r *Player) {
 	return
 }
 
-func (this *Socket) Errorf(format any) {
-	this.server.Errorf(this, format)
+func (this *Socket) Errorf(format any, args ...any) {
+	this.server.Errorf(this, format, args...)
 }
 
 // Verified 是否已经登录
@@ -120,12 +121,7 @@ func (this *Socket) RemoteAddr() net.Addr {
 }
 
 func (this *Socket) Send(code int16, path string, data any) (err error) {
-	m := Pool.Acquire()
-	defer func() {
-		if err != nil {
-			Pool.Release(m)
-		}
-	}()
+	m := NewMessage()
 	if err = m.Marshal(code, path, data, nil); err != nil {
 		return
 	}
@@ -169,7 +165,7 @@ func (this *Socket) processMsg(socket *Socket, msg *Message) {
 func (this *Socket) readMsg(ctx context.Context) {
 	defer this.disconnect()
 	var err error
-	head := make([]byte, MessageHead)
+	head := make([]byte, MessageHeadSize())
 	for {
 		if _, err = io.ReadFull(this.conn, head); err != nil {
 			if err != io.EOF && !scc.Stopped() {
@@ -186,6 +182,7 @@ func (this *Socket) readMsg(ctx context.Context) {
 func (this *Socket) writeMsg(ctx context.Context) {
 	defer this.disconnect()
 	var msg *Message
+	buf := bytes.NewBuffer([]byte{})
 	for {
 		select {
 		case <-ctx.Done():
@@ -193,7 +190,7 @@ func (this *Socket) writeMsg(ctx context.Context) {
 		case <-this.stop:
 			return
 		case msg = <-this.cwrite:
-			if !this.writeMsgTrue(msg) {
+			if !this.writeMsgTrue(msg, buf) {
 				return
 			}
 		}
@@ -202,13 +199,10 @@ func (this *Socket) writeMsg(ctx context.Context) {
 
 func (this *Socket) readMsgTrue(head []byte) (r bool) {
 	//logger.Debug("READ HEAD:%v", head)
-	msg := Pool.Acquire()
-	defer func() {
-		Pool.Release(msg)
-	}()
+	msg := NewMessage()
 	err := msg.Parse(head)
 	if err != nil {
-		this.server.Errorf(this, "READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
+		this.Errorf("READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
 		return false
 	}
 	//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
@@ -223,25 +217,23 @@ func (this *Socket) readMsgTrue(head []byte) (r bool) {
 	return true
 }
 
-func (this *Socket) writeMsgTrue(msg *Message) (r bool) {
+func (this *Socket) writeMsgTrue(msg *Message, buf *bytes.Buffer) (r bool) {
+	var err error
 	defer func() {
-		Pool.Release(msg)
-	}()
-	data, err := msg.Bytes()
-	if err != nil {
-		this.Errorf(err)
-		return true
-	}
-	var n int
-	writeCount := 0
-	for writeCount < len(data) {
-		n, err = this.conn.Write(data[writeCount:])
-		if err != nil {
+		buf.Reset()
+		if err == nil {
+			r = true
+		} else {
 			this.Errorf(err)
-			return false
 		}
-		writeCount += n
+	}()
+
+	if _, err = msg.Bytes(buf); err != nil {
+		return
+	}
+	if _, err = buf.WriteTo(this.conn); err != nil {
+		return
 	}
 	this.KeepAlive()
-	return true
+	return
 }

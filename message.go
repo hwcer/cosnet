@@ -8,15 +8,23 @@ import (
 )
 
 const (
+	MessageHead      = 9
 	magicNumber byte = 0x78 //78
 )
 
-var MessageByteCap int = 200 //最小分配内存,越大越浪费内存,但会减少内存分配次数
+var MessageByteCap int = 1024 //最小分配内存,越大越浪费内存,但会减少内存分配次数
 
 var Binder binder.Interface = binder.New(binder.MIMEJSON)
 
 func MagicNumber() byte {
 	return magicNumber
+}
+
+func NewMessage() *Message {
+	return &Message{}
+}
+func MessageHeadSize() int {
+	return MessageHead
 }
 
 // Message 默认使用路径模式集中注册协议
@@ -25,8 +33,6 @@ func MagicNumber() byte {
 // body : body数据字节数
 // data : path + body
 // path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
-
-const MessageHead = 9
 
 type Message struct {
 	code int16  //2    错误码  -32768 ~ 32767
@@ -70,15 +76,22 @@ func (this *Message) Parse(head []byte) error {
 }
 
 // Bytes 生成二进制文件
-func (this *Message) Bytes() (b []byte, err error) {
+func (this *Message) Bytes(w io.Writer) (n int, err error) {
 	size := this.Len()
-	b = make([]byte, size+MessageHead)
-	b[0] = magicNumber
-	binary.BigEndian.PutUint16(b[1:3], uint16(this.code))
-	binary.BigEndian.PutUint16(b[3:5], this.path)
-	binary.BigEndian.PutUint32(b[5:9], this.body)
+	head := make([]byte, MessageHead)
+	head[0] = magicNumber
+	binary.BigEndian.PutUint16(head[1:3], uint16(this.code))
+	binary.BigEndian.PutUint16(head[3:5], this.path)
+	binary.BigEndian.PutUint32(head[5:9], this.body)
+	var r int
+	if r, err = w.Write(head); err == nil {
+		n += r
+	} else {
+		return
+	}
 	if size > 0 {
-		copy(b[MessageHead:], this.data[0:size])
+		r, err = w.Write(this.data[0:size])
+		n += r
 	}
 	return
 }
@@ -124,9 +137,4 @@ func (this *Message) Unmarshal(i interface{}, bind binder.Interface) (err error)
 		bind = Binder
 	}
 	return bind.Unmarshal(this.Body(), i)
-}
-
-func (this *Message) Release() {
-	this.code, this.path, this.body = 0, 0, 0
-	this.data = this.data[:0]
 }

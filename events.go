@@ -1,7 +1,7 @@
 package cosnet
 
 import (
-	"fmt"
+	"github.com/hwcer/logger"
 )
 
 // EventType 事件类型
@@ -39,15 +39,7 @@ func (this *Server) Emit(e EventType, s *Socket, attach ...interface{}) (r bool)
 }
 
 // Errorf 抛出一个异常
-func (this *Server) Errorf(s *Socket, format interface{}, args ...interface{}) {
-	if len(args) == 0 {
-		this.Emit(EventTypeError, s, format)
-		return
-	}
-	v, ok := format.(string)
-	if !ok {
-		v = fmt.Sprintf("%v", format)
-	}
-	err := fmt.Errorf(v, args...)
+func (this *Server) Errorf(s *Socket, format any, args ...any) {
+	err := logger.Sprintf(format, args...)
 	this.Emit(EventTypeError, s, err)
 }

@@ -49,15 +49,6 @@ func (this *Player) Socket() *Socket {
 	return this.socket
 }
 
-// todo 并发
-func (this *Players) Remove(socket *Socket) bool {
-	player := socket.Player()
-	if player != nil {
-		this.dict.Delete(player.uuid)
-	}
-	return true
-}
-
 func (this *Players) Get(uuid string) *Player {
 	v, ok := this.dict.Load(uuid)
 	if !ok {
@@ -74,6 +65,14 @@ func (this *Players) Range(fn func(*Player) bool) {
 		}
 		return true
 	})
+}
+
+func (this *Players) Delete(socket *Socket) bool {
+	player := socket.Player()
+	if player != nil {
+		this.dict.Delete(player.uuid)
+	}
+	return true
 }
 
 // Verify 身份认证,登录,TOKEN信息验证之后调用

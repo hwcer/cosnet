@@ -55,8 +55,8 @@ func (this *Server) New(conn net.Conn) (socket *Socket, err error) {
 func (this *Server) Remove(socket *Socket) {
 	defer func() { _ = recover() }()
 	if socket.status.Destroy() {
-		this.Players.Remove(socket)
-		this.Sockets.Remove(socket.Id())
+		this.Players.Delete(socket)
+		this.Sockets.Delete(socket.Id())
 		socket.emit(EventTypeDestroyed)
 	}
 }

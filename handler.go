@@ -14,17 +14,17 @@ type HandlerCaller func(node *registry.Node, c *Context) (interface{}, error)
 type HandlerSerialize func(c *Context, reply interface{}) (interface{}, error)
 
 type Handler struct {
-	caller    HandlerCaller
 	filter    HandlerFilter
+	caller    HandlerCaller
 	serialize HandlerSerialize
 }
 
 func (this *Handler) Use(src interface{}) {
-	if v, ok := src.(HandlerCaller); ok {
-		this.caller = v
-	}
 	if v, ok := src.(HandlerFilter); ok {
 		this.filter = v
+	}
+	if v, ok := src.(HandlerCaller); ok {
+		this.caller = v
 	}
 	if v, ok := src.(HandlerSerialize); ok {
 		this.serialize = v
@@ -52,7 +52,6 @@ func (this *Handler) Filter(node *registry.Node) bool {
 		return true
 	}
 }
-func (this *Handler) handle() {}
 
 func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{}, err error) {
 	if this.caller != nil {
@@ -79,6 +78,7 @@ func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
 	}
 	if e, ok := reply.(error); ok {
 		return c.Error(e)
+	} else {
+		return c.Send(0, c.Message.Path(), reply)
 	}
-	return c.Send(reply)
 }
