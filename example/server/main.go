@@ -40,10 +40,6 @@ func (m *module) Start() error {
 	return nil
 }
 
-func (m *module) Close() error {
-	return server.Close()
-}
-
 func socketError(socket *cosnet.Socket, err interface{}) bool {
 	logger.Error("socket error:%v", err)
 	return false

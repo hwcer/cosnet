@@ -6,6 +6,7 @@ import (
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/storage"
+	"github.com/hwcer/logger"
 	"net"
 	"runtime/debug"
 	"strings"
@@ -87,9 +88,11 @@ func (this *Server) Register(i interface{}, prefix ...string) error {
 	return service.Register(i, prefix...)
 }
 
-func (this *Server) Close() (err error) {
+func (this *Server) Close() {
 	for _, l := range this.listener {
-		_ = l.Close()
+		if err := l.Close(); err != nil {
+			logger.Alert(err)
+		}
 	}
 	return
 }
@@ -172,6 +175,7 @@ func (this *Server) handle(socket *Socket, msg *Message) {
 // 11v9
 // heartbeat 启动协程定时清理无效用户
 func (this *Server) heartbeat(ctx context.Context) {
+	defer this.Close()
 	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
 	ticker := time.NewTimer(t)
 	defer ticker.Stop()
