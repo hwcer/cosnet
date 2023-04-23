@@ -69,9 +69,10 @@ func (this *Players) Range(fn func(*Player) bool) {
 
 func (this *Players) Delete(socket *Socket) bool {
 	player := socket.Player()
-	if player != nil {
-		this.dict.Delete(player.uuid)
+	if player == nil || socket.Id() != player.socket.Id() {
+		return false
 	}
+	this.dict.Delete(player.uuid)
 	return true
 }
 
