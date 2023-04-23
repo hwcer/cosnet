@@ -168,7 +168,7 @@ func (this *Socket) readMsg(ctx context.Context) {
 	head := make([]byte, MessageHeadSize())
 	for {
 		if _, err = io.ReadFull(this.conn, head); err != nil {
-			if err != io.EOF && !scc.Stopped() {
+			if err != io.EOF && err != net.ErrClosed && !scc.Stopped() {
 				this.Errorf(err)
 			}
 			return
