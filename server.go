@@ -54,6 +54,7 @@ func (this *Server) New(conn net.Conn) (socket *Socket, err error) {
 // Remove 彻底销毁,移除资源
 func (this *Server) Remove(socket *Socket) {
 	defer func() { _ = recover() }()
+	//logger.Debug("socket remove:%v", socket.Id())
 	if socket.status.Destroy() {
 		this.Sockets.Delete(socket.Id())
 		if this.Players.Delete(socket) {
