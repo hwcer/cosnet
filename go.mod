@@ -1,14 +1,11 @@
 module github.com/hwcer/cosnet
 
 go 1.18
-replace (
-	github.com/hwcer/cosgo v0.0.2 => ../cosgo
-	github.com/hwcer/logger v0.0.2 => ../logger
-)
+
 require (
-	github.com/hwcer/cosgo v0.0.2
-	github.com/hwcer/logger v0.0.2
-	github.com/soheilhy/cmux v0.1.4
+	github.com/hwcer/cosgo v0.0.3
+	github.com/hwcer/logger v0.0.3
+	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/pflag v1.0.5
 )
 
@@ -45,8 +42,6 @@ require (
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.7.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
-	google.golang.org/grpc v1.53.0 // indirect
-	google.golang.org/grpc/examples v0.0.0-20230412163030-fe72db958969 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
