@@ -3,9 +3,9 @@ package cosnet
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/storage"
-	"github.com/hwcer/cosgo/values"
 	"io"
 	"net"
 )
@@ -120,9 +120,9 @@ func (this *Socket) RemoteAddr() net.Addr {
 	return nil
 }
 
-func (this *Socket) Send(code int16, path string, data any) (err error) {
+func (this *Socket) Send(path string, data any) (err error) {
 	m := NewMessage()
-	if err = m.Marshal(code, path, data, nil); err != nil {
+	if err = m.Marshal(path, data, nil); err != nil {
 		return
 	}
 	err = this.Write(m)
@@ -133,7 +133,7 @@ func (this *Socket) Send(code int16, path string, data any) (err error) {
 func (this *Socket) Write(m *Message) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = values.Error(e)
+			err = fmt.Errorf("%v", e)
 		}
 	}()
 	if this.status.Disabled() {

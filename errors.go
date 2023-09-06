@@ -2,7 +2,6 @@ package cosnet
 
 import (
 	"errors"
-	"github.com/hwcer/cosgo/values"
 )
 
 var (
@@ -11,6 +10,6 @@ var (
 	ErrAuthDataExist   = errors.New("authenticated")
 	ErrAuthDataIllegal = errors.New("authentication data illegal")
 
-	ErrSocketClosed      = values.Errorf(0, "socket closed")
-	ErrSocketChannelFull = values.Errorf(0, "socket channel is full")
+	ErrSocketClosed      = errors.New("socket closed")
+	ErrSocketChannelFull = errors.New("socket channel is full")
 )

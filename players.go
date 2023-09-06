@@ -1,6 +1,7 @@
 package cosnet
 
 import (
+	"github.com/hwcer/cosgo/values"
 	"sync"
 )
 
@@ -15,11 +16,10 @@ func NewPlayer(uuid string, socket *Socket) *Player {
 }
 
 type Player struct {
-	//values.Values
-	uuid   string
-	mutex  sync.Mutex
-	socket *Socket
-	attach any //用户登录信息,推荐存入一个struct
+	values.Values //用户登录信息,推荐存入一个struct
+	uuid          string
+	mutex         sync.Mutex
+	socket        *Socket
 }
 
 type Players struct {
@@ -39,10 +39,6 @@ func (this *Player) replace(socket *Socket) {
 
 func (this *Player) UUID() string {
 	return this.uuid
-}
-
-func (this *Player) Attach() any {
-	return this.attach
 }
 
 func (this *Player) Socket() *Socket {
@@ -77,19 +73,26 @@ func (this *Players) Delete(socket *Socket) bool {
 }
 
 // Verify 身份认证,登录,TOKEN信息验证之后调用
-func (this *Players) Verify(uuid string, socket *Socket, attach any) (r *Player, err error) {
+func (this *Players) Verify(uuid string, socket *Socket, data values.Values) (r *Player, err error) {
 	player := NewPlayer(uuid, socket)
 	player.mutex.Lock()
 	defer player.mutex.Unlock()
-	if v, loaded := this.dict.LoadOrStore(uuid, player); loaded {
-		r, _ = v.(*Player)
+	if i, loaded := this.dict.LoadOrStore(uuid, player); loaded {
+		r, _ = i.(*Player)
 		if err = this.reconnect(r, socket); err != nil {
 			return
 		}
+		for k, v := range data {
+			r.Values.Set(k, v)
+		}
 	} else {
 		r = player
+		if data == nil {
+			r.Values = values.Values{}
+		} else {
+			r.Values = data
+		}
 	}
-	r.attach = attach
 	socket.Set(r)
 	socket.emit(EventTypeVerified)
 	return

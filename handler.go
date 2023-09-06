@@ -79,6 +79,6 @@ func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
 	if e, ok := reply.(error); ok {
 		return c.Error(e)
 	} else {
-		return c.Send(0, c.Message.Path(), reply)
+		return c.Send(c.Message.Path(), reply)
 	}
 }

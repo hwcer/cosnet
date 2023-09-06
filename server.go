@@ -135,7 +135,7 @@ func (this *Server) Player(id any) (player *Player) {
 func (this *Server) Broadcast(path string, data any, filter func(*Socket) bool) {
 	this.Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
-			_ = sock.Send(0, path, data)
+			_ = sock.Send(path, data)
 		}
 		return true
 	})
