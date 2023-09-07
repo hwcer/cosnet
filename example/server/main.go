@@ -4,14 +4,13 @@ import (
 	"github.com/hwcer/cosgo"
 	"github.com/hwcer/cosnet"
 	"github.com/hwcer/logger"
-	"github.com/spf13/pflag"
 	"time"
 )
 
 var server *cosnet.Server
 
 func init() {
-	pflag.String("address", "tcp://0.0.0.0:3000", "server address")
+	cosgo.Config.Flags("address", "", "tcp://0.0.0.0:3000", "server address")
 }
 func main() {
 	cosgo.Start(true, &module{Module: cosgo.NewModule("server")})
@@ -68,7 +67,7 @@ func ping(c *cosnet.Context) interface{} {
 	if err := c.Bind(&v); err != nil {
 		c.Socket.Errorf(err)
 	} else {
-		logger.Debug("收到消息:%v %v", c.Path(), v)
+		logger.Debug("收到消息:%v %v", c.Message.Path(), v)
 	}
 
 	return time.Now().Unix()

@@ -9,6 +9,7 @@ type EventType uint8
 
 const (
 	EventTypeError       EventType = iota + 1 //系统级别错误
+	EventTypeMessage                          //所有未注册的消息
 	EventTypeHeartbeat                        //心跳事件
 	EventTypeConnected                        //连接成功
 	EventTypeVerified                         //身份认证
@@ -16,7 +17,7 @@ const (
 	EventTypeReconnected                      //重登录
 	EventTypeReplaced                         //被顶号
 	EventTypeDestroyed                        //销毁所有信息
-	EventTypeMessage                          //所有未注册的消息
+
 )
 
 type EventsFunc func(*Socket, interface{}) bool

@@ -105,17 +105,24 @@ func (this *Message) Write(r io.Reader) (n int, err error) {
 }
 
 // Marshal 将一个对象放入Message.data
-func (this *Message) Marshal(path string, body interface{}, bind binder.Interface) error {
+func (this *Message) Marshal(path string, body any, bind binder.Interface) error {
+	if bind == nil {
+		bind = Binder
+	}
 	buffer := bytes.NewBuffer(this.data[:0])
 	if n, err := buffer.WriteString(path); err == nil {
 		this.path = uint16(n)
 	} else {
 		return err
 	}
-	if bind == nil {
-		bind = Binder
+	var err error
+	switch v := body.(type) {
+	case []byte:
+		_, err = buffer.Write(v)
+	default:
+		err = bind.Encode(buffer, body)
 	}
-	if err := bind.Encode(buffer, body); err != nil {
+	if err != nil {
 		return err
 	}
 	this.body = uint32(buffer.Len() - int(this.path))
