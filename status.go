@@ -15,7 +15,7 @@ const (
 //}
 
 type Status struct {
-	//mutex     sync.Mutex
+	//mutex     sync.mutex
 	status    int32  //0-正常，1-断开，2-强制关闭
 	closing   bool   //强制关闭中
 	heartbeat uint32 //heartbeat >=timeout 时被标记为超时
