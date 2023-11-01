@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"github.com/hwcer/cosgo"
+	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosnet"
+	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/logger"
+	"time"
 )
 
 var server *cosnet.Server
@@ -11,7 +15,8 @@ var server *cosnet.Server
 const C2SPing = "ping"
 
 func init() {
-	cosgo.Config.Flags("address", "", "tcp://127.0.0.1:8000", "server address")
+	cosgo.Config.Flags("address", "", "tcp://127.0.0.1:3000", "server address")
+	cosgo.Config.Flags("robot", "", 10, "server address")
 }
 
 func main() {
@@ -22,13 +27,11 @@ type module struct {
 	*cosgo.Module
 }
 
+var address string
+
 func (m *module) Start() error {
-	address := cosgo.Config.GetString("address")
+	address = cosgo.Config.GetString("address")
 	server = cosnet.New()
-	_, err := server.Connect(address)
-	if err != nil {
-		return err
-	}
 	//_ = server.Register(ping, C2SPing)
 	server.On(cosnet.EventTypeError, socketError)
 	server.On(cosnet.EventTypeMessage, socketMessage)
@@ -36,10 +39,37 @@ func (m *module) Start() error {
 	server.On(cosnet.EventTypeConnected, socketConnected)
 	server.On(cosnet.EventTypeDisconnect, socketDisconnect)
 	server.On(cosnet.EventTypeDestroyed, socketDestroyed)
+
+	robot := cosgo.Config.GetInt("robot")
+	for i := 0; i < robot; i++ {
+		scc.CGO(createRobot)
+	}
+
 	return nil
 }
+
+func createRobot(ctx context.Context) {
+	sock, err := server.Connect(address)
+	if err != nil {
+		logger.Alert("Create Robot :%v", err)
+		return
+	}
+	timer := time.NewTicker(time.Second)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			if err = sock.Send(C2SPing, "ping"); err != nil {
+				logger.Alert("Robot Send:%v", err)
+				return
+			}
+		}
+	}
+}
+
 func socketMessage(socket *cosnet.Socket, i any) bool {
-	msg := i.(*cosnet.Message)
+	msg := i.(message.Message)
 	logger.Trace("收到未注册消息  PATH:%v   BODY:%v", msg.Path(), string(msg.Body()))
 	return true
 }
@@ -50,9 +80,6 @@ func socketError(socket *cosnet.Socket, err interface{}) bool {
 
 func socketHeartbeat(socket *cosnet.Socket, _ interface{}) bool {
 	socket.KeepAlive()
-	if err := socket.Send(C2SPing, "hi"); err != nil {
-		socket.Errorf(err)
-	}
 	return true
 }
 
@@ -68,7 +95,6 @@ func socketDisconnect(socket *cosnet.Socket, _ interface{}) bool {
 
 func socketDestroyed(socket *cosnet.Socket, _ interface{}) bool {
 	logger.Trace("socket destroyed:%v", socket.Id())
-	address := cosgo.Config.GetString("address")
 	_, _ = server.Connect(address) //重连
 	return true
 }

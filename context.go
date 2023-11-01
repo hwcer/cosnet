@@ -1,12 +1,13 @@
 package cosnet
 
 import (
+	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/logger"
 )
 
 type Context struct {
 	*Socket
-	Message *Message
+	Message message.Message
 }
 
 func (this *Context) UUID() (r string) {
@@ -19,7 +20,7 @@ func (this *Context) Path() string {
 	return this.Message.Path()
 }
 func (this *Context) Bind(i any) error {
-	return this.Message.Unmarshal(i, Binder)
+	return this.Message.Unmarshal(i)
 }
 
 // Reply 使用当前路径回复

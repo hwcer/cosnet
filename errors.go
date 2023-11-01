@@ -5,8 +5,6 @@ import (
 )
 
 var (
-	ErrMsgDataSizeTooLong = errors.New("message data too long")
-
 	ErrAuthDataExist   = errors.New("authenticated")
 	ErrAuthDataIllegal = errors.New("authentication data illegal")
 

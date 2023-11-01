@@ -1,7 +1,7 @@
 package cosnet
 
 var Options = struct {
-	MaxDataSize          uint32 //包体最大长度
+	//MaxDataSize          uint32 //包体最大长度
 	WriteChanSize        int32  //写通道缓存
 	ConnectMaxSize       int32  //连接人数
 	SocketHeartbeat      uint32 //(MS)服务器心跳,用来检测玩家僵尸连接
@@ -16,17 +16,14 @@ var Options = struct {
 
 	UdpServerWorker int //UDP工作进程数量
 }{
-	MaxDataSize:    1024 * 1024,
-	WriteChanSize:  500,
-	ConnectMaxSize: 50000,
-
+	//MaxDataSize:          1024 * 1024,
+	WriteChanSize:        500,
+	ConnectMaxSize:       50000,
 	SocketHeartbeat:      2000,
 	SocketConnectTime:    5000,
 	SocketReconnectTime:  10000,
 	SocketDestroyingTime: 1000,
-
-	ClientReconnectMax:  1000,
-	ClientReconnectTime: 5000,
-
-	UdpServerWorker: 64,
+	ClientReconnectMax:   1000,
+	ClientReconnectTime:  5000,
+	UdpServerWorker:      64,
 }

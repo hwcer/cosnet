@@ -3,9 +3,11 @@ package cosnet
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/storage"
+	"github.com/hwcer/cosnet/message"
 	"io"
 	"net"
 )
@@ -14,7 +16,7 @@ func NewSocket(srv *Server, conn net.Conn) *Socket {
 	socket := &Socket{conn: conn, server: srv}
 	socket.stop = make(chan struct{})
 	//socket.status = NewStatus()
-	socket.cwrite = make(chan *Message, Options.WriteChanSize)
+	socket.cwrite = make(chan message.Message, Options.WriteChanSize)
 	scc.SGO(socket.readMsg)
 	scc.SGO(socket.writeMsg)
 	return socket
@@ -27,7 +29,7 @@ type Socket struct {
 	stop   chan struct{}
 	server *Server
 	status Status
-	cwrite chan *Message //写入通道,仅仅强制关闭的会被CLOSE
+	cwrite chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
 	//netType NetType       //网络连接类型
 }
 
@@ -53,7 +55,7 @@ func (this *Socket) disconnect() {
 }
 
 // Close 强制关闭,无法重连
-func (this *Socket) Close(msg ...*Message) {
+func (this *Socket) Close(msg ...message.Message) {
 	if !this.status.Close() || len(msg) == 0 {
 		return
 	}
@@ -121,8 +123,8 @@ func (this *Socket) RemoteAddr() net.Addr {
 }
 
 func (this *Socket) Send(path string, data any) (err error) {
-	m := NewMessage()
-	if err = m.Marshal(path, data, nil); err != nil {
+	m := this.server.Message.Require()
+	if err = m.Marshal(path, data); err != nil {
 		return
 	}
 	err = this.Write(m)
@@ -130,7 +132,7 @@ func (this *Socket) Send(path string, data any) (err error) {
 }
 
 // Write 外部写入消息,慎用,注意发送失败时消息回收,参考Send
-func (this *Socket) Write(m *Message) (err error) {
+func (this *Socket) Write(m message.Message) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("%v", e)
@@ -145,7 +147,7 @@ func (this *Socket) Write(m *Message) (err error) {
 	return
 }
 
-func (this *Socket) write(m *Message) bool {
+func (this *Socket) write(m message.Message) bool {
 	if m == nil || this.cwrite == nil {
 		return true
 	}
@@ -157,7 +159,7 @@ func (this *Socket) write(m *Message) bool {
 	}
 }
 
-func (this *Socket) processMsg(socket *Socket, msg *Message) {
+func (this *Socket) processMsg(socket *Socket, msg message.Message) {
 	this.KeepAlive()
 	this.server.handle(socket, msg)
 }
@@ -165,10 +167,10 @@ func (this *Socket) processMsg(socket *Socket, msg *Message) {
 func (this *Socket) readMsg(ctx context.Context) {
 	defer this.disconnect()
 	var err error
-	head := make([]byte, MessageHeadSize())
+	head := this.server.Message.Head()
 	for {
 		if _, err = io.ReadFull(this.conn, head); err != nil {
-			if err != io.EOF && err != net.ErrClosed && !scc.Stopped() {
+			if err != io.EOF && !errors.Is(err, net.ErrClosed) && !scc.Stopped() {
 				this.Errorf(err)
 			}
 			return
@@ -178,10 +180,27 @@ func (this *Socket) readMsg(ctx context.Context) {
 		}
 	}
 }
+func (this *Socket) readMsgTrue(head []byte) (r bool) {
+	//logger.Debug("READ HEAD:%v", head)
+	msg := this.server.Message.Require()
+	err := msg.Parse(head)
+	if err != nil {
+		this.Errorf("READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
+		return false
+	}
+	//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
+	_, err = msg.Write(this.conn)
+	if err != nil {
+		this.server.Errorf(this, "READ BODY ERR:%v", err)
+		return false
+	}
+	this.processMsg(this, msg)
+	return true
+}
 
 func (this *Socket) writeMsg(ctx context.Context) {
 	defer this.disconnect()
-	var msg *Message
+	var msg message.Message
 	buf := bytes.NewBuffer([]byte{})
 	for {
 		select {
@@ -197,27 +216,7 @@ func (this *Socket) writeMsg(ctx context.Context) {
 	}
 }
 
-func (this *Socket) readMsgTrue(head []byte) (r bool) {
-	//logger.Debug("READ HEAD:%v", head)
-	msg := NewMessage()
-	err := msg.Parse(head)
-	if err != nil {
-		this.Errorf("READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
-		return false
-	}
-	//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
-	if msg.Len() > 0 {
-		_, err = msg.Write(this.conn)
-		if err != nil {
-			this.server.Errorf(this, "READ BODY ERR:%v", err)
-			return false
-		}
-	}
-	this.processMsg(this, msg)
-	return true
-}
-
-func (this *Socket) writeMsgTrue(msg *Message, buf *bytes.Buffer) (r bool) {
+func (this *Socket) writeMsgTrue(msg message.Message, buf *bytes.Buffer) (r bool) {
 	var err error
 	defer func() {
 		buf.Reset()
@@ -231,6 +230,7 @@ func (this *Socket) writeMsgTrue(msg *Message, buf *bytes.Buffer) (r bool) {
 	if _, err = msg.Bytes(buf); err != nil {
 		return
 	}
+	this.server.Message.Release(msg)
 	if _, err = buf.WriteTo(this.conn); err != nil {
 		return
 	}

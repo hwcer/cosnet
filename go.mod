@@ -2,11 +2,15 @@ module github.com/hwcer/cosnet
 
 go 1.18
 
+replace (
+	github.com/hwcer/cosgo v0.0.0-20231101020432-3e059d38f972 => ../cosgo
+)
+
 require (
-	github.com/hwcer/cosgo v0.0.3
+	github.com/gorilla/websocket v1.5.0
+	github.com/hwcer/cosgo v0.0.0-20231101020432-3e059d38f972
 	github.com/hwcer/logger v0.0.3
 	github.com/soheilhy/cmux v0.1.5
-	github.com/spf13/pflag v1.0.5
 )
 
 require (
@@ -27,6 +31,7 @@ require (
 	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.15.0 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
 	github.com/tklauser/go-sysconf v0.3.11 // indirect

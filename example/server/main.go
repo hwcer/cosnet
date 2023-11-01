@@ -4,7 +4,6 @@ import (
 	"github.com/hwcer/cosgo"
 	"github.com/hwcer/cosnet"
 	"github.com/hwcer/logger"
-	"time"
 )
 
 var server *cosnet.Server
@@ -13,11 +12,13 @@ func init() {
 	cosgo.Config.Flags("address", "", "tcp://0.0.0.0:3000", "server address")
 }
 func main() {
-	cosgo.Start(true, &module{Module: cosgo.NewModule("server")})
+	m := &module{}
+	m.Id = "tcp server"
+	cosgo.Start(true, m)
 }
 
 type module struct {
-	*cosgo.Module
+	cosgo.Module
 }
 
 func (m *module) Start() error {
@@ -36,6 +37,11 @@ func (m *module) Start() error {
 	server.On(cosnet.EventTypeConnected, socketConnected)
 	server.On(cosnet.EventTypeDisconnect, socketDisconnect)
 	server.On(cosnet.EventTypeDestroyed, socketDestroyed)
+	return nil
+}
+
+func (m *module) Close() error {
+	server.Close()
 	return nil
 }
 
@@ -69,6 +75,7 @@ func ping(c *cosnet.Context) interface{} {
 	} else {
 		logger.Debug("收到消息:%v %v", c.Message.Path(), v)
 	}
-
-	return time.Now().Unix()
+	_ = c.Send("pong", "HI")
+	return nil
+	//return time.Now().Unix()
 }

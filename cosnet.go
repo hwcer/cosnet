@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/utils"
+	"github.com/hwcer/cosnet/tcp"
+	"github.com/hwcer/cosnet/udp"
 	"github.com/hwcer/logger"
-	"github.com/soheilhy/cmux"
-	"io"
 	"net"
 	"strings"
 	"time"
@@ -22,14 +22,42 @@ func (this *Server) Listen(address string) (listener net.Listener, err error) {
 	network := strings.ToLower(addr.Scheme)
 	switch network {
 	case "tcp", "tcp4", "tcp6":
-		listener, err = this.NewTcpServer(network, addr.String())
+		listener, err = tcp.New(network, addr.String())
 	case "udp", "udp4", "udp6":
-		listener, err = this.NewUdpServer(network, addr.String())
+		listener, err = udp.New(network, addr.String())
 	//case "unix", "unixgram", "unixpacket":
 	default:
 		err = errors.New("address scheme unknown")
 	}
+	if err == nil {
+		this.Accept(listener)
+		this.listener = append(this.listener, listener)
+	}
 	return
+}
+func (this *Server) Accept(ln net.Listener) {
+	scc.GO(func() {
+		this.accept(ln)
+	})
+}
+func (this *Server) accept(ln net.Listener) {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Alert(err)
+		}
+	}()
+	defer func() {
+		_ = ln.Close()
+	}()
+	for !scc.Stopped() {
+		conn, err := ln.Accept()
+		if err == nil {
+			_, err = this.New(conn)
+		}
+		if err != nil && !errors.Is(err, net.ErrClosed) && !scc.Stopped() {
+			logger.Error("tcp listener.Accept Error:%v", err)
+		}
+	}
 }
 
 // Connect 连接服务器address
@@ -39,60 +67,6 @@ func (this *Server) Connect(address string) (socket *Socket, err error) {
 		return nil, err
 	}
 	return this.New(conn)
-}
-
-func (this *Server) NewTcpServer(network, address string) (listener net.Listener, err error) {
-	listener, err = net.Listen(network, address)
-	if err != nil {
-		return
-	}
-	this.TCPListener(listener)
-	return
-}
-
-// NewUdpServer UDP server 暂时不提供 net.Listener
-func (this *Server) NewUdpServer(network, address string) (ln net.Listener, err error) {
-	server := &udpServer{dict: make(map[string]*udpConn), agents: this}
-	server.addr, err = net.ResolveUDPAddr(network, address)
-	if err != nil {
-		return
-	}
-	server.conn, err = net.ListenUDP(network, server.addr)
-	if err != nil {
-		return
-	}
-	if err = server.conn.SetReadBuffer(1 << 24); err != nil {
-		return
-	}
-	if err = server.conn.SetWriteBuffer(1 << 24); err != nil {
-		return
-	}
-	err = server.start()
-	return
-}
-
-func (this *Server) TCPListener(ln net.Listener) {
-	this.listener = append(this.listener, ln)
-	scc.GO(func() {
-		this.tcpListener(ln)
-	})
-}
-func (this *Server) tcpListener(ln net.Listener) {
-	defer func() {
-		_ = ln.Close()
-		if err := recover(); err != nil {
-			logger.Error(err)
-		}
-	}()
-	for !scc.Stopped() {
-		conn, err := ln.Accept()
-		if err == nil {
-			_, err = this.New(conn)
-		}
-		if err != nil && !scc.Stopped() {
-			logger.Error("listener.Accept Error:%v", err)
-		}
-	}
 }
 
 func (this *Server) tryConnect(s string) (net.Conn, error) {
@@ -110,20 +84,5 @@ func (this *Server) tryConnect(s string) (net.Conn, error) {
 			time.Sleep(time.Duration(Options.ClientReconnectTime))
 		}
 	}
-	return nil, errors.New("Failed to create to udpServer")
-}
-
-/*
-Matcher cmux Matcher
-m := cmux.New(ln)
-ln := m.Match(Matcher())
-Server.TCPListener(ln)
-*/
-func Matcher() cmux.Matcher {
-	magic := MagicNumber()
-	return func(r io.Reader) bool {
-		buf := make([]byte, 1)
-		n, _ := r.Read(buf)
-		return n == 1 && buf[0] == magic
-	}
+	return nil, fmt.Errorf("failed to dial %v", rs)
 }

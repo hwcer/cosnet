@@ -6,6 +6,7 @@ import (
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/storage"
+	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/logger"
 	"net"
 	"runtime/debug"
@@ -22,8 +23,9 @@ func newSetter(id storage.MID, val interface{}) storage.Setter {
 func New() *Server {
 	i := &Server{
 		events:   make(map[EventType][]EventsFunc),
-		registry: registry.New(nil),
+		Registry: registry.New(nil),
 	}
+	i.Message = message.New()
 	i.Players = NewPlayers()
 	i.Sockets = storage.New(1024)
 	i.Sockets.NewSetter = newSetter
@@ -34,9 +36,10 @@ func New() *Server {
 type Server struct {
 	events   map[EventType][]EventsFunc //事件监听
 	listener []net.Listener
-	registry *registry.Registry
-	Players  *Players //存储用户登录信息
-	Sockets  *storage.Array
+	Message  message.Handler    //消息处理器
+	Players  *Players           //存储用户登录信息
+	Sockets  *storage.Array     //存储Socket
+	Registry *registry.Registry //注册器
 }
 
 func (this *Server) Size() int {
@@ -73,7 +76,7 @@ func (this *Server) Range(fn func(socket *Socket) bool) {
 }
 
 func (this *Server) Service(name string, handler ...interface{}) *registry.Service {
-	service := this.registry.Service(name)
+	service := this.Registry.Service(name)
 	if service.Handler == nil {
 		service.Handler = &Handler{}
 	}
@@ -85,6 +88,7 @@ func (this *Server) Service(name string, handler ...interface{}) *registry.Servi
 	return service
 }
 
+// Register 使用默认Service注册接口
 func (this *Server) Register(i interface{}, prefix ...string) error {
 	service := this.Service("")
 	return service.Register(i, prefix...)
@@ -141,12 +145,13 @@ func (this *Server) Broadcast(path string, data any, filter func(*Socket) bool) 
 	})
 }
 
-func (this *Server) handle(socket *Socket, msg *Message) {
+func (this *Server) handle(socket *Socket, msg message.Message) {
 	var err error
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("server handle error:%v\n%v", e, string(debug.Stack()))
 		}
+		this.Message.Release(msg)
 		if err != nil {
 			this.Errorf(socket, err)
 		}
@@ -156,7 +161,7 @@ func (this *Server) handle(socket *Socket, msg *Message) {
 	if i := strings.Index(path, "?"); i >= 0 {
 		path = path[0:i]
 	}
-	node, ok := this.registry.Match(path)
+	node, ok := this.Registry.Match(path)
 	if !ok {
 		this.Emit(EventTypeMessage, socket, msg)
 		return
