@@ -127,7 +127,9 @@ func (this *Socket) Send(path string, data any) (err error) {
 	if err = m.Marshal(path, data); err != nil {
 		return
 	}
-	err = this.Write(m)
+	if err = this.Write(m); err != nil {
+		this.server.Message.Release(m)
+	}
 	return
 }
 

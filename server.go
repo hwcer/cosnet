@@ -151,11 +151,12 @@ func (this *Server) handle(socket *Socket, msg message.Message) {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("server handle error:%v\n%v", e, string(debug.Stack()))
 		}
-		this.Message.Release(msg)
 		if err != nil {
 			this.Errorf(socket, err)
 		}
 	}()
+
+	defer this.Message.Release(msg)
 
 	path := msg.Path()
 	if i := strings.Index(path, "?"); i >= 0 {

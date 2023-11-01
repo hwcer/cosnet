@@ -41,6 +41,11 @@ func (this *Server) Emit(e EventType, s *Socket, attach ...interface{}) (r bool)
 
 // Errorf 抛出一个异常
 func (this *Server) Errorf(s *Socket, format any, args ...any) {
+	defer func() {
+		if e := recover(); e != nil {
+			logger.Error(e)
+		}
+	}()
 	err := logger.Sprintf(format, args...)
 	this.Emit(EventTypeError, s, err)
 }
