@@ -71,6 +71,9 @@ func (m *message) Body() []byte {
 
 // Parse 解析二进制头并填充到对应字段
 func (m *message) Parse(head []byte) error {
+	if head[0] != Options.MagicNumber {
+		return ErrMsgHeadIllegal
+	}
 	m.path = binary.BigEndian.Uint16(head[1:3])
 	m.body = binary.BigEndian.Uint32(head[3:7])
 	if m.body > Options.MaxDataSize {

@@ -5,6 +5,7 @@ import (
 	"github.com/hwcer/cosgo/binder"
 )
 
+var ErrMsgHeadIllegal = errors.New("message head illegal")
 var ErrMsgDataSizeTooLong = errors.New("message data too long")
 
 var Options = struct {
