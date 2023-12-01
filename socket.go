@@ -185,6 +185,9 @@ func (this *Socket) readMsg(ctx context.Context) {
 func (this *Socket) readMsgTrue(head []byte) (r bool) {
 	//logger.Debug("READ HEAD:%v", head)
 	msg := this.server.Message.Require()
+	defer func() {
+		this.server.Message.Release(msg)
+	}()
 	err := msg.Parse(head)
 	if err != nil {
 		this.Errorf("READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
@@ -211,31 +214,25 @@ func (this *Socket) writeMsg(ctx context.Context) {
 		case <-this.stop:
 			return
 		case msg = <-this.cwrite:
-			if !this.writeMsgTrue(msg, buf) {
-				return
-			}
+			this.writeMsgTrue(msg, buf)
 		}
 	}
 }
 
-func (this *Socket) writeMsgTrue(msg message.Message, buf *bytes.Buffer) (r bool) {
+func (this *Socket) writeMsgTrue(msg message.Message, buf *bytes.Buffer) {
 	var err error
 	defer func() {
 		buf.Reset()
-		if err == nil {
-			r = true
-		} else {
+		this.server.Message.Release(msg)
+		if err != nil {
 			this.Errorf(err)
 		}
 	}()
-
 	if _, err = msg.Bytes(buf); err != nil {
 		return
 	}
-	this.server.Message.Release(msg)
 	if _, err = buf.WriteTo(this.conn); err != nil {
 		return
 	}
 	this.KeepAlive()
-	return
 }

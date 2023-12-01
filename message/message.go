@@ -37,7 +37,6 @@ func (h *handler) Release(i Message) {
 	if v, ok := i.(*message); ok {
 		v.path = 0
 		v.body = 0
-		v.data = v.data[0:0]
 		h.pool.Put(v)
 	}
 }
@@ -110,12 +109,10 @@ func (m *message) Write(r io.Reader) (n int, err error) {
 	}
 	if cap(m.data) >= size {
 		m.data = m.data[0:size]
+	} else if size > Options.Capacity {
+		m.data = make([]byte, size)
 	} else {
-		if size > Options.ByteCap {
-			m.data = make([]byte, size)
-		} else {
-			m.data = make([]byte, size, Options.ByteCap)
-		}
+		m.data = make([]byte, size, Options.Capacity)
 	}
 	return io.ReadFull(r, m.data)
 }
