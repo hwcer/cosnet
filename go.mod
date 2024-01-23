@@ -2,13 +2,11 @@ module github.com/hwcer/cosnet
 
 go 1.18
 
-replace (
-	github.com/hwcer/cosgo v0.0.0-20231101020432-3e059d38f972 => ../cosgo
-)
+replace github.com/hwcer/cosgo v0.0.0 => ../cosgo
 
 require (
 	github.com/gorilla/websocket v1.5.0
-	github.com/hwcer/cosgo v0.0.0-20231101020432-3e059d38f972
+	github.com/hwcer/cosgo v0.0.0
 	github.com/hwcer/logger v0.0.3
 	github.com/soheilhy/cmux v0.1.5
 )
