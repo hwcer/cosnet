@@ -7,7 +7,7 @@ replace github.com/hwcer/cosgo v0.0.0 => ../cosgo
 require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/hwcer/cosgo v0.0.0
-	github.com/hwcer/logger v0.0.3
+	github.com/hwcer/logger v0.0.5
 	github.com/soheilhy/cmux v0.1.5
 )
 
