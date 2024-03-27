@@ -5,9 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/storage"
 	"github.com/hwcer/cosnet/message"
+	"github.com/hwcer/scc"
 	"io"
 	"net"
 )

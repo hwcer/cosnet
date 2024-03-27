@@ -1,8 +1,8 @@
 package cosnet
 
 import (
-	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/logger"
+	"github.com/hwcer/registry"
 	"reflect"
 )
 

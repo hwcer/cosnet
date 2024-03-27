@@ -3,7 +3,7 @@ package udp
 import (
 	"bytes"
 	"context"
-	"github.com/hwcer/cosgo/scc"
+	"github.com/hwcer/scc"
 	"net"
 	"sync"
 )
@@ -56,8 +56,6 @@ func (this *Listener) Accept() (ln net.Conn, err error) {
 	select {
 	case ln = <-this.accepts:
 	case <-this.stop:
-		err = net.ErrClosed
-	case <-scc.Context().Done():
 		err = net.ErrClosed
 	}
 	return

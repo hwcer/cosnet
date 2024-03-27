@@ -3,11 +3,11 @@ package cosnet
 import (
 	"errors"
 	"fmt"
-	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/tcp"
 	"github.com/hwcer/cosnet/udp"
 	"github.com/hwcer/logger"
+	"github.com/hwcer/scc"
 	"net"
 	"strings"
 	"time"
