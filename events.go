@@ -20,7 +20,7 @@ const (
 
 )
 
-type EventsFunc func(*Socket, interface{}) bool
+type EventsFunc func(*Socket, any) bool
 
 func (this *Server) On(e EventType, f EventsFunc) {
 	this.events[e] = append(this.events[e], f)

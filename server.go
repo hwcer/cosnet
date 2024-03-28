@@ -2,6 +2,7 @@ package cosnet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/storage"
 	"github.com/hwcer/cosnet/message"
@@ -20,8 +21,9 @@ func newSetter(id storage.MID, val interface{}) storage.Setter {
 	return d
 }
 
-func New() *Server {
+func New(ctx context.Context) *Server {
 	i := &Server{
+		SCC:      scc.New(ctx),
 		events:   make(map[EventType][]EventsFunc),
 		Registry: registry.New(nil),
 	}
@@ -29,11 +31,12 @@ func New() *Server {
 	i.Players = NewPlayers()
 	i.Sockets = storage.New(1024)
 	i.Sockets.NewSetter = newSetter
-	scc.CGO(i.heartbeat)
+	i.SCC.CGO(i.heartbeat)
 	return i
 }
 
 type Server struct {
+	SCC      *scc.SCC
 	events   map[EventType][]EventsFunc //事件监听
 	listener []net.Listener
 	Message  message.Handler    //消息处理器
@@ -48,6 +51,9 @@ func (this *Server) Size() int {
 
 // New 创建新socket并自动加入到Sockets管理器
 func (this *Server) New(conn net.Conn) (socket *Socket, err error) {
+	if this.SCC.Stopped() {
+		return nil, errors.New("server closed")
+	}
 	socket = NewSocket(this, conn)
 	this.Sockets.Create(socket)
 	this.Emit(EventTypeConnected, socket)
@@ -94,13 +100,19 @@ func (this *Server) Register(i interface{}, prefix ...string) error {
 	return service.Register(i, prefix...)
 }
 
-func (this *Server) Close() {
+func (this *Server) Close() error {
+	if !this.SCC.Cancel() {
+		return nil
+	}
+	if err := this.SCC.Wait(10); err != nil {
+		return fmt.Errorf("close server error:%v", err)
+	}
 	for _, l := range this.listener {
 		if err := l.Close(); err != nil {
 			logger.Alert(err)
 		}
 	}
-	return
+	return nil
 }
 
 // Socket 通过SOCKETID获取SOCKET
@@ -192,7 +204,7 @@ func (this *Server) heartbeat(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			scc.Try(this.doHeartbeat)
+			this.SCC.Try(this.doHeartbeat)
 			ticker.Reset(t)
 		}
 	}

@@ -7,7 +7,6 @@ import (
 	"github.com/hwcer/cosnet/tcp"
 	"github.com/hwcer/cosnet/udp"
 	"github.com/hwcer/logger"
-	"github.com/hwcer/scc"
 	"net"
 	"strings"
 	"time"
@@ -31,14 +30,14 @@ func (this *Server) Listen(address string) (listener net.Listener, err error) {
 	}
 	if err == nil {
 		this.Accept(listener)
-		this.listener = append(this.listener, listener)
 	}
 	return
 }
 func (this *Server) Accept(ln net.Listener) {
-	scc.GO(func() {
+	this.listener = append(this.listener, ln)
+	go func() {
 		this.accept(ln)
-	})
+	}()
 }
 func (this *Server) accept(ln net.Listener) {
 	defer func() {
@@ -49,12 +48,12 @@ func (this *Server) accept(ln net.Listener) {
 	defer func() {
 		_ = ln.Close()
 	}()
-	for !scc.Stopped() {
+	for !this.SCC.Stopped() {
 		conn, err := ln.Accept()
 		if err == nil {
 			_, err = this.New(conn)
 		}
-		if err != nil && !errors.Is(err, net.ErrClosed) && !scc.Stopped() {
+		if err != nil && !errors.Is(err, net.ErrClosed) && !this.SCC.Stopped() {
 			logger.Error("tcp listener.Accept Error:%v", err)
 		}
 	}

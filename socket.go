@@ -17,8 +17,8 @@ func NewSocket(srv *Server, conn net.Conn) *Socket {
 	socket.stop = make(chan struct{})
 	//socket.status = NewStatus()
 	socket.cwrite = make(chan message.Message, Options.WriteChanSize)
-	scc.SGO(socket.readMsg)
-	scc.SGO(socket.writeMsg)
+	srv.SCC.SGO(socket.readMsg)
+	srv.SCC.SGO(socket.writeMsg)
 	return socket
 }
 
