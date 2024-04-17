@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/utils"
-	"github.com/hwcer/cosnet/tcp"
-	"github.com/hwcer/cosnet/udp"
 	"github.com/hwcer/logger"
 	"net"
 	"strings"
@@ -13,7 +11,7 @@ import (
 )
 
 // Listen 启动柜服务器,监听address
-func (this *Server) Listen(address string) (listener net.Listener, err error) {
+func (this *Server) Listen(address string) (listener Listener, err error) {
 	addr := utils.NewAddress(address)
 	if addr.Scheme == "" {
 		return nil, errors.New("address scheme empty")
@@ -21,9 +19,9 @@ func (this *Server) Listen(address string) (listener net.Listener, err error) {
 	network := strings.ToLower(addr.Scheme)
 	switch network {
 	case "tcp", "tcp4", "tcp6":
-		listener, err = tcp.New(network, addr.String())
-	case "udp", "udp4", "udp6":
-		listener, err = udp.New(network, addr.String())
+		listener, err = NewTCPListener(network, addr.String())
+	//case "udp", "udp4", "udp6":
+	//	listener, err = udp.New(network, addr.String())
 	//case "unix", "unixgram", "unixpacket":
 	default:
 		err = errors.New("address scheme unknown")
@@ -33,13 +31,13 @@ func (this *Server) Listen(address string) (listener net.Listener, err error) {
 	}
 	return
 }
-func (this *Server) Accept(ln net.Listener) {
+func (this *Server) Accept(ln Listener) {
 	this.listener = append(this.listener, ln)
 	go func() {
 		this.accept(ln)
 	}()
 }
-func (this *Server) accept(ln net.Listener) {
+func (this *Server) accept(ln Listener) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Alert(err)
@@ -68,7 +66,7 @@ func (this *Server) Connect(address string) (socket *Socket, err error) {
 	return this.New(conn)
 }
 
-func (this *Server) tryConnect(s string) (net.Conn, error) {
+func (this *Server) tryConnect(s string) (Conn, error) {
 	address := utils.NewAddress(s)
 	if address.Scheme == "" {
 		address.Scheme = "tcp"
@@ -77,7 +75,7 @@ func (this *Server) tryConnect(s string) (net.Conn, error) {
 	for try := uint16(0); try < Options.ClientReconnectMax; try++ {
 		conn, err := net.DialTimeout(address.Scheme, rs, time.Second)
 		if err == nil {
-			return conn, nil
+			return NewTCPConn(conn), nil
 		} else {
 			fmt.Printf("%v %v\n", try, err)
 			time.Sleep(time.Duration(Options.ClientReconnectTime))

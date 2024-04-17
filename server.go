@@ -9,7 +9,6 @@ import (
 	"github.com/hwcer/logger"
 	"github.com/hwcer/registry"
 	"github.com/hwcer/scc"
-	"net"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -27,7 +26,7 @@ func New(ctx context.Context) *Server {
 		events:   make(map[EventType][]EventsFunc),
 		Registry: registry.New(nil),
 	}
-	i.Message = message.New()
+	//i.Message = message.New()
 	i.Players = NewPlayers()
 	i.Sockets = storage.New(1024)
 	i.Sockets.NewSetter = newSetter
@@ -38,8 +37,7 @@ func New(ctx context.Context) *Server {
 type Server struct {
 	SCC      *scc.SCC
 	events   map[EventType][]EventsFunc //事件监听
-	listener []net.Listener
-	Message  message.Handler    //消息处理器
+	listener []Listener
 	Players  *Players           //存储用户登录信息
 	Sockets  *storage.Array     //存储Socket
 	Registry *registry.Registry //注册器
@@ -50,7 +48,7 @@ func (this *Server) Size() int {
 }
 
 // New 创建新socket并自动加入到Sockets管理器
-func (this *Server) New(conn net.Conn) (socket *Socket, err error) {
+func (this *Server) New(conn Conn) (socket *Socket, err error) {
 	if this.SCC.Stopped() {
 		return nil, errors.New("server closed")
 	}

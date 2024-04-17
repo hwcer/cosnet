@@ -1,7 +1,6 @@
 package cosnet
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,10 +11,9 @@ import (
 	"net"
 )
 
-func NewSocket(srv *Server, conn net.Conn) *Socket {
+func NewSocket(srv *Server, conn Conn) *Socket {
 	socket := &Socket{conn: conn, server: srv}
 	socket.stop = make(chan struct{})
-	//socket.status = NewStatus()
 	socket.cwrite = make(chan message.Message, Options.WriteChanSize)
 	srv.SCC.SGO(socket.readMsg)
 	srv.SCC.SGO(socket.writeMsg)
@@ -25,7 +23,7 @@ func NewSocket(srv *Server, conn net.Conn) *Socket {
 // Socket 基础网络连接
 type Socket struct {
 	storage.Data
-	conn   net.Conn
+	conn   Conn
 	stop   chan struct{}
 	server *Server
 	status Status
@@ -33,206 +31,177 @@ type Socket struct {
 	//netType NetType       //网络连接类型
 }
 
-func (this *Socket) emit(e EventType) bool {
-	return this.server.Emit(e, this)
+func (sock *Socket) emit(e EventType) bool {
+	return sock.server.Emit(e, sock)
 }
 
-func (this *Socket) close() {
+func (sock *Socket) close() {
 	defer func() { _ = recover() }()
-	if this.stop != nil {
-		close(this.stop)
+	if sock.stop != nil {
+		close(sock.stop)
 	}
-	_ = this.conn.Close()
+	_ = sock.conn.Close()
 }
 
 // disconnect 掉线,包含网络超时，网络错误
-func (this *Socket) disconnect() {
-	if this.status.Disconnect() {
-		this.close()
-		this.KeepAlive()
-		this.emit(EventTypeDisconnect)
+func (sock *Socket) disconnect() {
+	if sock.status.Disconnect() {
+		sock.close()
+		sock.KeepAlive()
+		sock.emit(EventTypeDisconnect)
 	}
 }
 
 // Close 强制关闭,无法重连
-func (this *Socket) Close(msg ...message.Message) {
-	if !this.status.Close() || len(msg) == 0 {
+func (sock *Socket) Close(msg ...message.Message) {
+	if !sock.status.Close() || len(msg) == 0 {
 		return
 	}
 	defer func() {
 		_ = recover()
 	}()
 	for _, m := range msg {
-		_ = this.write(m)
+		_ = sock.write(m)
 	}
 }
 
-func (this *Socket) Player() (r *Player) {
-	v := this.Data.Get()
+func (sock *Socket) Player() (r *Player) {
+	v := sock.Data.Get()
 	if v != nil {
 		r, _ = v.(*Player)
 	}
 	return
 }
 
-func (this *Socket) Errorf(format any, args ...any) {
-	this.server.Errorf(this, format, args...)
+func (sock *Socket) Errorf(format any, args ...any) {
+	sock.server.Errorf(sock, format, args...)
 }
 
 // Verified 是否已经登录
-func (this *Socket) Verified() bool {
-	return this.Get() != nil
+func (sock *Socket) Verified() bool {
+	return sock.Get() != nil
 }
 
 // Heartbeat 每一次Heartbeat() heartbeat计数加1
-func (this *Socket) Heartbeat() {
-	heartbeat := this.status.Heartbeat()
-	switch this.status.status {
+func (sock *Socket) Heartbeat() {
+	heartbeat := sock.status.Heartbeat()
+	switch sock.status.status {
 	case StatusTypeDestroyed:
-		this.server.Remove(this)
+		sock.server.Remove(sock)
 	case StatusTypeDisconnect:
-		if !this.Verified() || Options.SocketReconnectTime == 0 || heartbeat > Options.SocketReconnectTime {
-			this.server.Remove(this)
+		if !sock.Verified() || Options.SocketReconnectTime == 0 || heartbeat > Options.SocketReconnectTime {
+			sock.server.Remove(sock)
 		}
 	default:
-		if this.status.closing && (len(this.cwrite) == 0 || heartbeat >= Options.SocketDestroyingTime) {
-			this.close()
+		if sock.status.closing && (len(sock.cwrite) == 0 || heartbeat >= Options.SocketDestroyingTime) {
+			sock.close()
 		}
 		if heartbeat >= Options.SocketConnectTime {
-			this.disconnect()
+			sock.disconnect()
 		}
 	}
 }
 
 // KeepAlive 任何行为都清空heartbeat
-func (this *Socket) KeepAlive() {
-	this.status.KeepAlive()
+func (sock *Socket) KeepAlive() {
+	sock.status.KeepAlive()
 }
 
-func (this *Socket) LocalAddr() net.Addr {
-	if this.conn != nil {
-		return this.conn.LocalAddr()
+func (sock *Socket) LocalAddr() net.Addr {
+	if sock.conn != nil {
+		return sock.conn.LocalAddr()
 	}
 	return nil
 }
-func (this *Socket) RemoteAddr() net.Addr {
-	if this.conn != nil {
-		return this.conn.RemoteAddr()
+func (sock *Socket) RemoteAddr() net.Addr {
+	if sock.conn != nil {
+		return sock.conn.RemoteAddr()
 	}
 	return nil
 }
 
-func (this *Socket) Send(path string, data any) (err error) {
-	m := this.server.Message.Require()
+func (sock *Socket) Send(path string, data any) (err error) {
+	m := message.Require()
 	if err = m.Marshal(path, data); err != nil {
 		return
 	}
-	if err = this.Write(m); err != nil {
-		this.server.Message.Release(m)
+	if err = sock.Write(m); err != nil {
+		message.Release(m)
 	}
 	return
 }
 
 // Write 外部写入消息,慎用,注意发送失败时消息回收,参考Send
-func (this *Socket) Write(m message.Message) (err error) {
+func (sock *Socket) Write(m message.Message) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("%v", e)
 		}
 	}()
-	if this.status.Disabled() {
+	if sock.status.Disabled() {
 		return ErrSocketClosed
 	}
-	if !this.write(m) {
+	if !sock.write(m) {
 		err = ErrSocketChannelFull
 	}
 	return
 }
 
-func (this *Socket) write(m message.Message) bool {
-	if m == nil || this.cwrite == nil {
+func (sock *Socket) write(m message.Message) bool {
+	if m == nil || sock.cwrite == nil {
 		return true
 	}
 	select {
-	case this.cwrite <- m:
+	case sock.cwrite <- m:
 		return true
 	default:
 		return false
 	}
 }
 
-func (this *Socket) processMsg(socket *Socket, msg message.Message) {
-	this.KeepAlive()
-	this.server.handle(socket, msg)
-}
-
-func (this *Socket) readMsg(ctx context.Context) {
-	defer this.disconnect()
-	var err error
-	head := this.server.Message.Head()
+func (sock *Socket) readMsg(_ context.Context) {
+	defer sock.disconnect()
 	for {
-		if _, err = io.ReadFull(this.conn, head); err != nil {
+		if msg, err := sock.conn.ReadMessage(); err != nil {
 			if err != io.EOF && !errors.Is(err, net.ErrClosed) && !scc.Stopped() {
-				this.Errorf(err)
+				sock.Errorf(err)
 			}
 			return
-		}
-		if !this.readMsgTrue(head) {
-			return
+		} else {
+			sock.readMsgTrue(msg)
 		}
 	}
 }
-func (this *Socket) readMsgTrue(head []byte) (r bool) {
-	//logger.Debug("READ HEAD:%v", head)
-	msg := this.server.Message.Require()
-	defer func() {
-		this.server.Message.Release(msg)
-	}()
-	err := msg.Parse(head)
-	if err != nil {
-		this.Errorf("READ HEAD ERR,RemoteAddr:%v,HEAD:%v", err, this.RemoteAddr().String(), head)
-		return false
-	}
-	//logger.Debug("READ HEAD:%+v BYTE:%v", *msg.Header, head)
-	_, err = msg.Write(this.conn)
-	if err != nil {
-		this.server.Errorf(this, "READ BODY ERR:%v", err)
-		return false
-	}
-	this.processMsg(this, msg)
-	return true
+func (sock *Socket) readMsgTrue(msg message.Message) {
+	sock.KeepAlive()
+	sock.server.handle(sock, msg)
 }
 
-func (this *Socket) writeMsg(ctx context.Context) {
-	defer this.disconnect()
+func (sock *Socket) writeMsg(ctx context.Context) {
+	defer sock.disconnect()
 	var msg message.Message
-	buf := bytes.NewBuffer([]byte{})
+	//buf := bytes.NewBuffer([]byte{})
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-this.stop:
+		case <-sock.stop:
 			return
-		case msg = <-this.cwrite:
-			this.writeMsgTrue(msg, buf)
+		case msg = <-sock.cwrite:
+			sock.writeMsgTrue(msg)
 		}
 	}
 }
 
-func (this *Socket) writeMsgTrue(msg message.Message, buf *bytes.Buffer) {
+func (sock *Socket) writeMsgTrue(msg message.Message) {
 	var err error
 	defer func() {
-		buf.Reset()
-		this.server.Message.Release(msg)
+		message.Release(msg)
 		if err != nil {
-			this.Errorf(err)
+			sock.Errorf(err)
+		} else {
+			sock.KeepAlive()
 		}
 	}()
-	if _, err = msg.Bytes(buf); err != nil {
-		return
-	}
-	if _, err = buf.WriteTo(this.conn); err != nil {
-		return
-	}
-	this.KeepAlive()
+	err = sock.conn.WriteMessage(msg)
 }
