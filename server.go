@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/storage"
+	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/logger"
 	"github.com/hwcer/registry"
@@ -37,7 +38,7 @@ func New(ctx context.Context) *Server {
 type Server struct {
 	SCC      *scc.SCC
 	events   map[EventType][]EventsFunc //事件监听
-	listener []Listener
+	listener []listener.Listener
 	Players  *Players           //存储用户登录信息
 	Sockets  *storage.Array     //存储Socket
 	Registry *registry.Registry //注册器
@@ -48,7 +49,7 @@ func (this *Server) Size() int {
 }
 
 // New 创建新socket并自动加入到Sockets管理器
-func (this *Server) New(conn Conn) (socket *Socket, err error) {
+func (this *Server) New(conn listener.Conn) (socket *Socket, err error) {
 	if this.SCC.Stopped() {
 		return nil, errors.New("server closed")
 	}
@@ -193,7 +194,9 @@ func (this *Server) handle(socket *Socket, msg message.Message) {
 // 11v9
 // heartbeat 启动协程定时清理无效用户
 func (this *Server) heartbeat(ctx context.Context) {
-	defer this.Close()
+	defer func() {
+		_ = this.Close()
+	}()
 	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
 	ticker := time.NewTimer(t)
 	defer ticker.Stop()

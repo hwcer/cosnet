@@ -1,4 +1,4 @@
-package cosnet
+package tcp
 
 import (
 	"bytes"
@@ -8,37 +8,17 @@ import (
 	"net"
 )
 
-func NewTCPListener(network, address string) (Listener, error) {
-	ln, err := net.Listen(network, address)
-	if err != nil {
-		return nil, err
-	}
-	return &TCPListener{Listener: ln}, nil
+func NewConn(c net.Conn) *Conn {
+	return &Conn{Conn: c}
 }
 
-type TCPListener struct {
-	net.Listener
-}
-
-func (ln *TCPListener) Accept() (Conn, error) {
-	conn, err := ln.Listener.Accept()
-	if err == nil {
-		return NewTCPConn(conn), nil
-	}
-	return nil, err
-}
-
-func NewTCPConn(c net.Conn) Conn {
-	return &TCPConn{Conn: c}
-}
-
-type TCPConn struct {
+type Conn struct {
 	net.Conn
 	head []byte
 	buff *bytes.Buffer
 }
 
-func (this *TCPConn) ReadMessage() (message.Message, error) {
+func (this *Conn) ReadMessage() (message.Message, error) {
 	var err error
 	if this.head == nil {
 		this.head = message.Options.Head()
@@ -49,7 +29,7 @@ func (this *TCPConn) ReadMessage() (message.Message, error) {
 		return this.readMsgTrue(this.head)
 	}
 }
-func (this *TCPConn) readMsgTrue(head []byte) (message.Message, error) {
+func (this *Conn) readMsgTrue(head []byte) (message.Message, error) {
 	//logger.Debug("READ HEAD:%v", head)
 	msg := message.Require()
 	defer func() {
@@ -67,13 +47,12 @@ func (this *TCPConn) readMsgTrue(head []byte) (message.Message, error) {
 	return msg, nil
 }
 
-func (this *TCPConn) WriteMessage(msg message.Message) (err error) {
+func (this *Conn) WriteMessage(msg message.Message) (err error) {
 	if this.buff == nil {
 		this.buff = new(bytes.Buffer)
 	}
 	defer func() {
 		this.buff.Reset()
-		message.Release(msg)
 	}()
 
 	if _, err = msg.Bytes(this.buff); err != nil {

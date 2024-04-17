@@ -1,4 +1,4 @@
-package cosnet
+package listener
 
 import (
 	"github.com/hwcer/cosnet/message"

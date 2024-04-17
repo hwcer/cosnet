@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/storage"
+	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/scc"
 	"io"
 	"net"
 )
 
-func NewSocket(srv *Server, conn Conn) *Socket {
+func NewSocket(srv *Server, conn listener.Conn) *Socket {
 	socket := &Socket{conn: conn, server: srv}
 	socket.stop = make(chan struct{})
 	socket.cwrite = make(chan message.Message, Options.WriteChanSize)
@@ -23,7 +24,7 @@ func NewSocket(srv *Server, conn Conn) *Socket {
 // Socket 基础网络连接
 type Socket struct {
 	storage.Data
-	conn   Conn
+	conn   listener.Conn
 	stop   chan struct{}
 	server *Server
 	status Status
@@ -179,15 +180,13 @@ func (sock *Socket) readMsgTrue(msg message.Message) {
 
 func (sock *Socket) writeMsg(ctx context.Context) {
 	defer sock.disconnect()
-	var msg message.Message
-	//buf := bytes.NewBuffer([]byte{})
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-sock.stop:
 			return
-		case msg = <-sock.cwrite:
+		case msg := <-sock.cwrite:
 			sock.writeMsgTrue(msg)
 		}
 	}

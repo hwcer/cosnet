@@ -22,8 +22,8 @@ type message struct {
 }
 
 // Size 包体总长
-func (m *message) Size() int {
-	return int(m.size)
+func (m *message) Size() int32 {
+	return m.size
 }
 
 func (m *message) length() int {
@@ -78,7 +78,7 @@ func (m *message) Bytes(w io.Writer) (n int, err error) {
 
 // Write 从conn中读取数据写入到data
 func (m *message) Write(r io.Reader) (n int, err error) {
-	size := m.Size()
+	size := int(m.Size())
 	if size == 0 {
 		return
 	}
@@ -118,6 +118,10 @@ func (m *message) Marshal(path string, body any) error {
 	m.size = int32(buffer.Len())
 	m.bytes = buffer.Bytes()
 	return nil
+}
+func (m *message) Reset(b []byte) {
+	m.size = int32(len(b))
+	m.bytes = b
 }
 
 // Unmarshal 解析Message body
