@@ -12,11 +12,11 @@ import (
 	"time"
 )
 
-// Listen 启动柜服务器,监听address
-func (this *Server) Listen(address string) (listener listener.Listener, err error) {
+// Start 启动服务器,监听address
+func (this *Server) Start(address string) (listener listener.Listener, err error) {
 	addr := utils.NewAddress(address)
 	if addr.Scheme == "" {
-		return nil, errors.New("address scheme empty")
+		addr.Scheme = "tcp"
 	}
 	network := strings.ToLower(addr.Scheme)
 	switch network {
