@@ -5,12 +5,24 @@ import (
 	"fmt"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/listener"
+	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/cosnet/tcp"
 	"github.com/hwcer/logger"
+	"github.com/soheilhy/cmux"
+	"io"
 	"net"
 	"strings"
 	"time"
 )
+
+func (this *Server) Matcher() cmux.Matcher {
+	magic := message.Options.MagicNumber
+	return func(r io.Reader) bool {
+		buf := make([]byte, 1)
+		n, _ := r.Read(buf)
+		return n == 1 && buf[0] == magic
+	}
+}
 
 // Start 启动服务器,监听address
 func (this *Server) Start(address string) (listener listener.Listener, err error) {
