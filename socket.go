@@ -168,14 +168,20 @@ func (sock *Socket) readMsg(_ context.Context) {
 				sock.Errorf(err)
 			}
 			return
-		} else {
-			sock.readMsgTrue(msg)
+		} else if !sock.readMsgTrue(msg) {
+			return
 		}
 	}
 }
-func (sock *Socket) readMsgTrue(msg message.Message) {
+func (sock *Socket) readMsgTrue(msg message.Message) bool {
+	if err := msg.Verify(); err != nil {
+		sock.Errorf(err)
+		return false
+	}
+	defer message.Release(msg)
 	sock.KeepAlive()
 	sock.server.handle(sock, msg)
+	return true
 }
 
 func (sock *Socket) writeMsg(ctx context.Context) {

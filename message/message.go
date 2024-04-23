@@ -3,6 +3,7 @@ package message
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -43,6 +44,18 @@ func (m *message) Path() string {
 func (m *message) Body() []byte {
 	s := m.length() + 4
 	return m.bytes[s:]
+}
+
+// Verify 校验包体是否正常
+func (m *message) Verify() error {
+	s := m.length() + 4
+	if l := len(m.bytes); l < s {
+		if l > 255 {
+			l = 255
+		}
+		return fmt.Errorf("message too short:%v", string(m.bytes[0:l]))
+	}
+	return nil
 }
 
 // Parse 解析二进制头并填充到对应字段

@@ -167,8 +167,6 @@ func (this *Server) handle(socket *Socket, msg message.Message) {
 		}
 	}()
 
-	//defer this.Message.Release(msg)
-
 	path := msg.Path()
 	if i := strings.Index(path, "?"); i >= 0 {
 		path = path[0:i]

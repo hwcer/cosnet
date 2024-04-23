@@ -33,6 +33,7 @@ type Message interface {
 	Parse(head []byte) error              //解析二进制包头
 	Bytes(w io.Writer) (n int, err error) //转换成二进制并发送
 	Write(r io.Reader) (n int, err error) //从CONN中写入Size()哥字节
+	Verify() error                        //校验包体是否正常
 	Marshal(path string, body any) error  //使用对象填充包体
 	Unmarshal(i interface{}) (err error)
 	Release()
