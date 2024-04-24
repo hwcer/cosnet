@@ -48,6 +48,9 @@ func (m *message) Body() []byte {
 
 // Verify 校验包体是否正常
 func (m *message) Verify() error {
+	if len(m.bytes) < 4 {
+		return fmt.Errorf("message size is too small")
+	}
 	s := m.length() + 4
 	if l := len(m.bytes); l < s {
 		if l > 255 {
@@ -71,16 +74,18 @@ func (m *message) Parse(head []byte) error {
 }
 
 // Bytes 生成二进制文件
-func (m *message) Bytes(w io.Writer) (n int, err error) {
-	size := m.Size()
-	head := make([]byte, messageHeadSize)
-	head[0] = Options.MagicNumber
-	binary.BigEndian.PutUint32(head[1:5], uint32(m.size))
+func (m *message) Bytes(w io.Writer, head bool) (n int, err error) {
 	var r int
-	if r, err = w.Write(head); err == nil {
-		n += r
-	} else {
-		return
+	size := m.Size()
+	if head {
+		headByte := make([]byte, messageHeadSize)
+		headByte[0] = Options.MagicNumber
+		binary.BigEndian.PutUint32(headByte[1:5], uint32(m.size))
+		if r, err = w.Write(headByte); err == nil {
+			n += r
+		} else {
+			return
+		}
 	}
 	if size > 0 {
 		r, err = w.Write(m.bytes[0:size])

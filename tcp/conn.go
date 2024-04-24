@@ -55,7 +55,7 @@ func (this *Conn) WriteMessage(msg message.Message) (err error) {
 		this.buff.Reset()
 	}()
 
-	if _, err = msg.Bytes(this.buff); err != nil {
+	if _, err = msg.Bytes(this.buff, true); err != nil {
 		return
 	}
 	if _, err = this.buff.WriteTo(this.Conn); err != nil {
