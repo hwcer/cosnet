@@ -3,11 +3,10 @@ module github.com/hwcer/cosnet
 go 1.21.5
 
 require (
-	github.com/gorilla/websocket v1.5.1
-	github.com/hwcer/cosgo v1.0.2
+	github.com/hwcer/cosgo v1.0.5
 	github.com/hwcer/logger v0.0.5
 	github.com/hwcer/registry v0.0.6
-	github.com/hwcer/scc v0.0.4
+	github.com/hwcer/scc v0.0.6
 	github.com/soheilhy/cmux v0.1.5
 )
 
@@ -19,7 +18,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
-	github.com/hwcer/schema v0.0.2 // indirect
+	github.com/hwcer/schema v0.0.3 // indirect
 	github.com/klauspost/compress v1.17.7 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
