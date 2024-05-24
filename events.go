@@ -12,7 +12,6 @@ const (
 	EventTypeMessage                          //所有未注册的消息
 	EventTypeHeartbeat                        //心跳事件
 	EventTypeConnected                        //连接成功
-	EventTypeVerified                         //身份认证
 	EventTypeDisconnect                       //断开连接
 	EventTypeReconnected                      //重登录
 	EventTypeReplaced                         //被顶号
