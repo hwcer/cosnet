@@ -55,7 +55,7 @@ func (this *Server) New(conn listener.Conn) (socket *Socket, err error) {
 	}
 	socket = NewSocket(this, conn)
 	this.Sockets.Create(socket)
-	this.Emit(EventTypeConnected, socket)
+	//this.Emit(EventTypeConnected, socket)
 	return
 }
 
