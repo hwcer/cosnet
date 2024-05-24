@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/storage"
+	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/scc"
@@ -13,7 +14,7 @@ import (
 )
 
 func NewSocket(srv *Server, conn listener.Conn) *Socket {
-	socket := &Socket{conn: conn, server: srv}
+	socket := &Socket{conn: conn, Server: srv}
 	socket.stop = make(chan struct{})
 	socket.cwrite = make(chan message.Message, Options.WriteChanSize)
 	srv.SCC.SGO(socket.readMsg)
@@ -26,14 +27,9 @@ type Socket struct {
 	storage.Data
 	conn   listener.Conn
 	stop   chan struct{}
-	server *Server
-	status Status
 	cwrite chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
-	//netType NetType       //网络连接类型
-}
-
-func (sock *Socket) emit(e EventType) bool {
-	return sock.server.Emit(e, sock)
+	Server *Server
+	Status Status
 }
 
 func (sock *Socket) close() {
@@ -46,16 +42,20 @@ func (sock *Socket) close() {
 
 // disconnect 掉线,包含网络超时，网络错误
 func (sock *Socket) disconnect() {
-	if sock.status.Disconnect() {
+	if sock.Status.Disconnect() {
 		sock.close()
 		sock.KeepAlive()
-		sock.emit(EventTypeDisconnect)
+		sock.Emit(EventTypeDisconnect)
 	}
+}
+
+func (sock *Socket) Emit(e EventType) bool {
+	return sock.Server.Emit(e, sock)
 }
 
 // Close 强制关闭,无法重连
 func (sock *Socket) Close(msg ...message.Message) {
-	if !sock.status.Close() || len(msg) == 0 {
+	if !sock.Status.Close() || len(msg) == 0 {
 		return
 	}
 	defer func() {
@@ -66,35 +66,30 @@ func (sock *Socket) Close(msg ...message.Message) {
 	}
 }
 
-func (sock *Socket) Player() (r *Player) {
+func (sock *Socket) Values() (r values.Values) {
 	v := sock.Data.Get()
 	if v != nil {
-		r, _ = v.(*Player)
+		r, _ = v.(values.Values)
 	}
 	return
 }
 
 func (sock *Socket) Errorf(format any, args ...any) {
-	sock.server.Errorf(sock, format, args...)
-}
-
-// Verified 是否已经登录
-func (sock *Socket) Verified() bool {
-	return sock.Get() != nil
+	sock.Server.Errorf(sock, format, args...)
 }
 
 // Heartbeat 每一次Heartbeat() heartbeat计数加1
 func (sock *Socket) Heartbeat() {
-	heartbeat := sock.status.Heartbeat()
-	switch sock.status.status {
+	heartbeat := sock.Status.Heartbeat()
+	switch sock.Status.status {
 	case StatusTypeDestroyed:
-		sock.server.Remove(sock)
+		sock.Server.Remove(sock)
 	case StatusTypeDisconnect:
-		if !sock.Verified() || Options.SocketReconnectTime == 0 || heartbeat > Options.SocketReconnectTime {
-			sock.server.Remove(sock)
+		if sock.Get() == nil || Options.SocketReconnectTime == 0 || heartbeat > Options.SocketReconnectTime {
+			sock.Server.Remove(sock)
 		}
 	default:
-		if sock.status.closing && (len(sock.cwrite) == 0 || heartbeat >= Options.SocketDestroyingTime) {
+		if sock.Status.closing && (len(sock.cwrite) == 0 || heartbeat >= Options.SocketDestroyingTime) {
 			sock.close()
 		}
 		if heartbeat >= Options.SocketConnectTime {
@@ -105,7 +100,7 @@ func (sock *Socket) Heartbeat() {
 
 // KeepAlive 任何行为都清空heartbeat
 func (sock *Socket) KeepAlive() {
-	sock.status.KeepAlive()
+	sock.Status.KeepAlive()
 }
 
 func (sock *Socket) LocalAddr() net.Addr {
@@ -139,7 +134,7 @@ func (sock *Socket) Write(m message.Message) (err error) {
 			err = fmt.Errorf("%v", e)
 		}
 	}()
-	if sock.status.Disabled() {
+	if sock.Status.Disabled() {
 		return ErrSocketClosed
 	}
 	if !sock.write(m) {
@@ -180,7 +175,7 @@ func (sock *Socket) readMsgTrue(msg message.Message) bool {
 		return false
 	}
 	sock.KeepAlive()
-	sock.server.handle(sock, msg)
+	sock.Server.handle(sock, msg)
 	return true
 }
 

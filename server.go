@@ -28,7 +28,7 @@ func New(ctx context.Context) *Server {
 		Registry: registry.New(nil),
 	}
 	//i.Message = message.New()
-	i.Players = NewPlayers()
+	//i.Players = gate.NewPlayers()
 	i.Sockets = storage.New(1024)
 	i.Sockets.NewSetter = newSetter
 	i.SCC.CGO(i.heartbeat)
@@ -39,7 +39,7 @@ type Server struct {
 	SCC      *scc.SCC
 	events   map[EventType][]EventsFunc //事件监听
 	listener []listener.Listener
-	Players  *Players           //存储用户登录信息
+	//Players  *gate.Players      //存储用户登录信息
 	Sockets  *storage.Array     //存储Socket
 	Registry *registry.Registry //注册器
 }
@@ -63,11 +63,9 @@ func (this *Server) New(conn listener.Conn) (socket *Socket, err error) {
 func (this *Server) Remove(socket *Socket) {
 	defer func() { _ = recover() }()
 	//logger.Debug("socket remove:%v", socket.Id())
-	if socket.status.Destroy() {
+	if socket.Status.Destroy() {
 		this.Sockets.Delete(socket.Id())
-		if this.Players.Delete(socket) {
-			socket.emit(EventTypeDestroyed)
-		}
+		socket.Emit(EventTypeDestroyed)
 	}
 }
 
@@ -117,31 +115,9 @@ func (this *Server) Close() error {
 // Socket 通过SOCKETID获取SOCKET
 // id.(string) 通过用户ID获取
 // id.(MID) 通过SOCKET ID获取
-func (this *Server) Socket(id any) (socket *Socket) {
-	switch v := id.(type) {
-	case string:
-		if player := this.Players.Get(v); player != nil {
-			socket = player.socket
-		}
-	case storage.MID:
-		if i, ok := this.Sockets.Get(v); ok {
-			socket, _ = i.(*Socket)
-		}
-	}
-	return
-}
-
-// Player 获取用户对象,id同this.Socket(id)
-func (this *Server) Player(id any) (player *Player) {
-	switch v := id.(type) {
-	case string:
-		player = this.Players.Get(v)
-	case storage.MID:
-		if socket, ok := this.Sockets.Get(v); ok {
-			if r := socket.Get(); r != nil {
-				player, _ = r.(*Player)
-			}
-		}
+func (this *Server) Socket(id storage.MID) (socket *Socket) {
+	if i, ok := this.Sockets.Get(id); ok {
+		socket, _ = i.(*Socket)
 	}
 	return
 }
