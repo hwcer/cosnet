@@ -8,6 +8,7 @@ import (
 	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
+	"github.com/hwcer/logger"
 	"github.com/hwcer/scc"
 	"io"
 	"net"
@@ -122,6 +123,7 @@ func (sock *Socket) Send(path string, data any) (err error) {
 		return
 	}
 	if err = sock.Write(m); err != nil {
+		logger.Alert("socket Send Error:%v", err)
 		message.Release(m)
 	}
 	return
@@ -163,12 +165,15 @@ func (sock *Socket) readMsg(_ context.Context) {
 				sock.Errorf(err)
 			}
 			return
-		} else if msg != nil && !sock.readMsgTrue(msg) {
+		} else if !sock.readMsgTrue(msg) {
 			return
 		}
 	}
 }
 func (sock *Socket) readMsgTrue(msg message.Message) bool {
+	if msg == nil {
+		return false
+	}
 	defer message.Release(msg)
 	if err := msg.Verify(); err != nil {
 		sock.Errorf(err)

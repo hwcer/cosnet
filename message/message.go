@@ -107,21 +107,26 @@ func (m *message) Write(r io.Reader) (n int, err error) {
 	} else {
 		m.bytes = make([]byte, size, Options.Capacity)
 	}
-	return io.ReadFull(r, m.bytes)
+	n, err = r.Read(m.bytes)
+	if n != size {
+		return n, io.ErrShortBuffer
+	}
+	return
+	//return io.ReadFull(r, m.bytes)
 }
 
 // Marshal 将一个对象放入Message.data
 func (m *message) Marshal(path string, body any) error {
-	if len(m.bytes) < 4 {
-		m.bytes = make([]byte, 0, Options.Capacity)
-	}
 	b := []byte(path)
 	m.l = len(b)
-	binary.BigEndian.PutUint32(m.bytes[0:4], uint32(m.l))
-	buffer := bytes.NewBuffer(m.bytes[0:4])
-	if _, err := buffer.Write(b); err != nil {
-		return err
+	s := m.l + 4
+	if len(m.bytes) < s {
+		m.bytes = make([]byte, s, Options.Capacity)
 	}
+	binary.BigEndian.PutUint32(m.bytes[0:4], uint32(m.l))
+	copy(m.bytes[4:s], b)
+	buffer := bytes.NewBuffer(m.bytes[0:s])
+
 	var err error
 	switch v := body.(type) {
 	case []byte:
@@ -133,8 +138,8 @@ func (m *message) Marshal(path string, body any) error {
 		return err
 	}
 
-	m.size = int32(buffer.Len())
 	m.bytes = buffer.Bytes()
+	m.size = int32(len(m.bytes))
 	return nil
 }
 func (m *message) Reset(b []byte) {

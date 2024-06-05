@@ -10,13 +10,15 @@ var ErrMsgHeadIllegal = errors.New("message head illegal")
 var ErrMsgDataSizeTooLong = errors.New("message data too long")
 
 var Options = struct {
-	Binder      binder.Interface //UDP工作进程数量
-	Capacity    int              //message []byte 默认长度
+	Pool        bool //是否启用消息池 message pool
+	Binder      binder.Interface
+	Capacity    int //message []byte 默认长度
 	MagicNumber byte
 	MaxDataSize int32
 	New         func() Message
 	Head        func() []byte //包头
 }{
+	Pool:        true,
 	Binder:      binder.New(binder.MIMEJSON),
 	Capacity:    1024,
 	MagicNumber: 0x78,

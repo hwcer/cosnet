@@ -12,11 +12,19 @@ func init() {
 }
 
 func Require() Message {
-	i := pool.Get()
-	return i.(Message)
+	if Options.Pool {
+		i := pool.Get()
+		return i.(Message)
+	} else {
+		return Options.New()
+	}
+
 }
 
 func Release(i Message) {
-	i.Release()
-	pool.Put(i)
+	if Options.Pool {
+		i.Release()
+		pool.Put(i)
+	}
+
 }
