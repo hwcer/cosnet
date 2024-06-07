@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/hwcer/cosnet/message"
+	"io"
 	"net"
 )
 
@@ -22,7 +23,7 @@ func (this *Conn) ReadMessage() (message.Message, error) {
 	if this.head == nil {
 		this.head = message.Options.Head()
 	}
-	if _, err = this.Conn.Read(this.head); err != nil {
+	if _, err = io.ReadFull(this.Conn, this.head); err != nil {
 		return nil, err
 	} else {
 		return this.readMsgTrue(this.head)

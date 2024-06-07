@@ -17,7 +17,8 @@ const messageHeadSize = 5
 // path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
 
 type message struct {
-	size  int32  //4    bytes长度
+	size  int32 //4    bytes长度
+	head  []byte
 	bytes []byte //数据   [int32][path][body]
 	l     int    //path
 }
@@ -63,6 +64,9 @@ func (m *message) Verify() error {
 
 // Parse 解析二进制头并填充到对应字段
 func (m *message) Parse(head []byte) error {
+	if len(head) != messageHeadSize {
+		return ErrMsgHeadIllegal
+	}
 	if head[0] != Options.MagicNumber {
 		return ErrMsgHeadIllegal
 	}
@@ -78,10 +82,12 @@ func (m *message) Bytes(w io.Writer, head bool) (n int, err error) {
 	var r int
 	size := m.Size()
 	if head {
-		headByte := make([]byte, messageHeadSize)
-		headByte[0] = Options.MagicNumber
-		binary.BigEndian.PutUint32(headByte[1:5], uint32(m.size))
-		if r, err = w.Write(headByte); err == nil {
+		if m.head == nil {
+			m.head = make([]byte, messageHeadSize)
+		}
+		m.head[0] = Options.MagicNumber
+		binary.BigEndian.PutUint32(m.head[1:5], uint32(m.size))
+		if r, err = w.Write(m.head); err == nil {
 			n += r
 		} else {
 			return
@@ -107,37 +113,33 @@ func (m *message) Write(r io.Reader) (n int, err error) {
 	} else {
 		m.bytes = make([]byte, size, Options.Capacity)
 	}
-	n, err = r.Read(m.bytes)
+	n, err = io.ReadFull(r, m.bytes[0:size])
 	if n != size {
 		return n, io.ErrShortBuffer
 	}
 	return
-	//return io.ReadFull(r, m.bytes)
 }
 
 // Marshal 将一个对象放入Message.data
 func (m *message) Marshal(path string, body any) error {
 	b := []byte(path)
 	m.l = len(b)
-	s := m.l + 4
-	if len(m.bytes) < s {
-		m.bytes = make([]byte, s, Options.Capacity)
+	if len(m.bytes) < 4 {
+		m.bytes = make([]byte, 4, Options.Capacity)
 	}
 	binary.BigEndian.PutUint32(m.bytes[0:4], uint32(m.l))
-	copy(m.bytes[4:s], b)
-	buffer := bytes.NewBuffer(m.bytes[0:s])
-
+	buffer := bytes.NewBuffer(m.bytes[0:4])
+	buffer.Write(b)
 	var err error
 	switch v := body.(type) {
 	case []byte:
-		_, err = buffer.Write(v)
+		buffer.Write(v)
 	default:
 		err = Options.Binder.Encode(buffer, body)
 	}
 	if err != nil {
 		return err
 	}
-
 	m.bytes = buffer.Bytes()
 	m.size = int32(len(m.bytes))
 	return nil

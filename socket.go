@@ -172,7 +172,7 @@ func (sock *Socket) readMsg(_ context.Context) {
 }
 func (sock *Socket) readMsgTrue(msg message.Message) bool {
 	if msg == nil {
-		return false
+		return true
 	}
 	defer message.Release(msg)
 	if err := msg.Verify(); err != nil {
