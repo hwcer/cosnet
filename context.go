@@ -1,8 +1,8 @@
 package cosnet
 
 import (
+	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/cosnet/message"
-	"github.com/hwcer/logger"
 )
 
 type Context struct {
@@ -30,11 +30,12 @@ func (this *Context) Reply(v any) error {
 
 // Error 使用当前路径向客户端写入一个默认错误码的信息
 func (this *Context) Error(err any) error {
-	return this.Socket.Send(this.Path(), err)
+	msg := values.Error(err)
+	return this.Socket.Send(this.Path(), msg)
 }
 
 // Errorf 使用当前路径向客户端写入一个特定错误码的信息
-func (this *Context) Errorf(format any, args ...any) error {
-	txt := logger.Sprintf(format, args)
-	return this.Socket.Send(this.Path(), txt)
+func (this *Context) Errorf(code int, format any, args ...any) error {
+	msg := values.Errorf(code, format, args...)
+	return this.Socket.Send(this.Path(), msg)
 }
