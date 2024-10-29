@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/storage"
-	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/logger"
@@ -67,13 +66,9 @@ func (sock *Socket) Close(msg ...message.Message) {
 	}
 }
 
-func (sock *Socket) Values() (r values.Values) {
-	v := sock.Data.Get()
-	if v != nil {
-		r, _ = v.(values.Values)
-	}
-	return
-}
+//func (sock *Socket) Values() (r any) {
+//	return sock.Data.Get()
+//}
 
 func (sock *Socket) Errorf(format any, args ...any) {
 	sock.Server.Errorf(sock, format, args...)
