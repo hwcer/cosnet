@@ -3,11 +3,11 @@ package cosnet
 import (
 	"errors"
 	"fmt"
+	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/cosnet/tcp"
-	"github.com/hwcer/logger"
 	"github.com/soheilhy/cmux"
 	"io"
 	"net"

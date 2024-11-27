@@ -1,7 +1,7 @@
 package cosnet
 
 import (
-	"github.com/hwcer/logger"
+	"github.com/hwcer/cosgo/logger"
 )
 
 // EventType 事件类型

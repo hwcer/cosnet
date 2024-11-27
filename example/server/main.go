@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/hwcer/cosgo"
+	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosnet"
-	"github.com/hwcer/logger"
 )
 
 var server *cosnet.Server
