@@ -56,6 +56,7 @@ func (sock *Socket) disconnect() {
 func (sock *Socket) Id() uint64 {
 	return sock.id
 }
+
 func (sock *Socket) Data() *session.Data {
 	return sock.data
 }
