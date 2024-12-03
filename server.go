@@ -1,76 +1,56 @@
 package cosnet
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosgo/scc"
-	"github.com/hwcer/cosgo/storage"
 	"github.com/hwcer/cosnet/listener"
-	"github.com/hwcer/cosnet/message"
-	"runtime/debug"
-	"strings"
-	"time"
+	"golang.org/x/sync/syncmap"
 )
 
-func newSetter(id storage.MID, val interface{}) storage.Setter {
-	d := val.(*Socket)
-	d.Data = *storage.NewData(id, nil)
-	return d
-}
-
-func New(ctx context.Context) *Server {
-	i := &Server{
-		SCC:      scc.New(ctx),
-		events:   make(map[EventType][]EventsFunc),
-		Registry: registry.New(nil),
-	}
-	//i.Message = message.New()
-	//i.Players = gate.NewPlayers()
-	i.Sockets = storage.New(1024)
-	i.Sockets.NewSetter = newSetter
-	i.SCC.CGO(i.heartbeat)
-	return i
-}
-
-type Server struct {
-	SCC      *scc.SCC
-	events   map[EventType][]EventsFunc //事件监听
-	listener []listener.Listener
-	//Players  *gate.Players      //存储用户登录信息
-	Sockets  *storage.Array     //存储Socket
+var (
+	index    uint64
+	online   int32
+	sockets  syncmap.Map                //存储Socket
+	emitter  map[EventType][]EventsFunc //事件监听
+	instance []listener.Listener
 	Registry *registry.Registry //注册器
-}
+)
 
-func (this *Server) Size() int {
-	return this.Sockets.Size()
+func init() {
+	sockets = syncmap.Map{}
+	emitter = make(map[EventType][]EventsFunc)
+	Registry = registry.New(nil)
 }
 
 // New 创建新socket并自动加入到Sockets管理器
-func (this *Server) New(conn listener.Conn) (socket *Socket, err error) {
-	if this.SCC.Stopped() {
+func New(conn listener.Conn) (socket *Socket, err error) {
+	if scc.Stopped() {
 		return nil, errors.New("server closed")
 	}
-	socket = NewSocket(this, conn)
-	this.Sockets.Create(socket)
-	//this.Emit(EventTypeConnected, socket)
+	socket = NewSocket(conn)
+	sockets.Store(socket.id, socket)
+	Emit(EventTypeConnected, socket)
 	return
 }
 
-// Remove 彻底销毁,移除资源
-func (this *Server) Remove(socket *Socket) {
-	defer func() { _ = recover() }()
-	//logger.Debug("socket remove:%v", socket.Id())
-	if socket.Status.Destroy() {
-		this.Sockets.Delete(socket.Id())
-		socket.Emit(EventTypeDestroyed)
+// Get 通过SOCKET ID获取SOCKET
+// id.(string) 通过用户ID获取
+// id.(MID) 通过SOCKET ID获取
+func Get(id uint64) (socket *Socket) {
+	if i, ok := sockets.Load(id); ok {
+		socket, _ = i.(*Socket)
 	}
+	return
 }
 
-func (this *Server) Range(fn func(socket *Socket) bool) {
-	this.Sockets.Range(func(v storage.Setter) bool {
+// Online 当前在线总人数
+func Online() int32 {
+	return online
+}
+
+func Range(fn func(socket *Socket) bool) {
+	sockets.Range(func(_, v any) bool {
 		if s, ok := v.(*Socket); ok {
 			return fn(s)
 		}
@@ -78,8 +58,8 @@ func (this *Server) Range(fn func(socket *Socket) bool) {
 	})
 }
 
-func (this *Server) Service(name string, handler ...interface{}) *registry.Service {
-	service := this.Registry.Service(name)
+func Service(name string, handler ...interface{}) *registry.Service {
+	service := Registry.Service(name)
 	if service.Handler == nil {
 		service.Handler = &Handler{}
 	}
@@ -92,102 +72,17 @@ func (this *Server) Service(name string, handler ...interface{}) *registry.Servi
 }
 
 // Register 使用默认Service注册接口
-func (this *Server) Register(i interface{}, prefix ...string) error {
-	service := this.Service("")
+func Register(i interface{}, prefix ...string) error {
+	service := Service("")
 	return service.Register(i, prefix...)
 }
 
-func (this *Server) Close() error {
-	if !this.SCC.Cancel() {
-		return nil
-	}
-	if err := this.SCC.Wait(10); err != nil {
-		return fmt.Errorf("close server error:%v", err)
-	}
-	for _, l := range this.listener {
-		if err := l.Close(); err != nil {
-			logger.Alert(err)
-		}
-	}
-	return nil
-}
-
-// Socket 通过SOCKETID获取SOCKET
-// id.(string) 通过用户ID获取
-// id.(MID) 通过SOCKET ID获取
-func (this *Server) Socket(id storage.MID) (socket *Socket) {
-	if i, ok := this.Sockets.Get(id); ok {
-		socket, _ = i.(*Socket)
-	}
-	return
-}
-
 // Broadcast 广播,filter 过滤函数，如果不为nil且返回false则不对当期socket进行发送消息
-func (this *Server) Broadcast(path string, data any, filter func(*Socket) bool) {
-	this.Range(func(sock *Socket) bool {
+func Broadcast(path string, data any, filter func(*Socket) bool) {
+	Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
 			_ = sock.Send(path, data)
 		}
-		return true
-	})
-}
-
-func (this *Server) handle(socket *Socket, msg message.Message) {
-	var err error
-	defer func() {
-		if e := recover(); e != nil {
-			err = fmt.Errorf("server handle error:%v\n%v", e, string(debug.Stack()))
-		}
-		if err != nil {
-			this.Errorf(socket, err)
-		}
-	}()
-
-	path := msg.Path()
-	if i := strings.Index(path, "?"); i >= 0 {
-		path = path[0:i]
-	}
-	node, ok := this.Registry.Match(path)
-	if !ok {
-		this.Emit(EventTypeMessage, socket, msg)
-		return
-	}
-	handler := node.Service.Handler.(*Handler)
-	if handler == nil {
-		return
-	}
-	c := &Context{Socket: socket, Message: msg}
-	var reply interface{}
-	reply, err = handler.Caller(node, c)
-	if err != nil {
-		return
-	}
-	err = handler.Serialize(c, reply)
-}
-
-// 11v9
-// heartbeat 启动协程定时清理无效用户
-func (this *Server) heartbeat(ctx context.Context) {
-	defer func() {
-		_ = this.Close()
-	}()
-	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
-	ticker := time.NewTimer(t)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			this.SCC.Try(this.doHeartbeat)
-			ticker.Reset(t)
-		}
-	}
-}
-func (this *Server) doHeartbeat(ctx context.Context) {
-	this.Range(func(socket *Socket) bool {
-		socket.Heartbeat()
-		this.Emit(EventTypeHeartbeat, socket)
 		return true
 	})
 }

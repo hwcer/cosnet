@@ -1,31 +1,38 @@
 package cosnet
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/logger"
+	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/cosnet/tcp"
-	"github.com/soheilhy/cmux"
 	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
-func (this *Server) Matcher() cmux.Matcher {
+var started int32
+
+//func Matcher() cmux.Matcher {
+//	magic := message.Options.MagicNumber
+//	return
+//}
+
+func Matcher(r io.Reader) bool {
 	magic := message.Options.MagicNumber
-	return func(r io.Reader) bool {
-		buf := make([]byte, 1)
-		n, _ := r.Read(buf)
-		return n == 1 && buf[0] == magic
-	}
+	buf := make([]byte, 1)
+	n, _ := r.Read(buf)
+	return n == 1 && buf[0] == magic
 }
 
-// Start 启动服务器,监听address
-func (this *Server) Start(address string) (listener listener.Listener, err error) {
+// Listen 监听address
+func Listen(address string) (listener listener.Listener, err error) {
 	addr := utils.NewAddress(address)
 	if addr.Scheme == "" {
 		addr.Scheme = "tcp"
@@ -40,18 +47,35 @@ func (this *Server) Start(address string) (listener listener.Listener, err error
 	default:
 		err = errors.New("address scheme unknown")
 	}
+
 	if err == nil {
-		this.Accept(listener)
+		Accept(listener)
+		instance = append(instance, listener)
 	}
+
 	return
 }
-func (this *Server) Accept(ln listener.Listener) {
-	this.listener = append(this.listener, ln)
-	go func() {
-		this.accept(ln)
-	}()
+func Accept(ln listener.Listener) {
+	scc.Try(func(ctx context.Context) {
+		acceptListener(ln)
+	})
+	serverStarting()
 }
-func (this *Server) accept(ln listener.Listener) {
+
+func serverStarting() {
+	if atomic.CompareAndSwapInt32(&started, 0, 1) {
+		scc.CGO(heartbeat)
+		scc.Trigger(serverStopped)
+	}
+}
+
+func serverStopped() {
+	for _, l := range instance {
+		_ = l.Close()
+	}
+}
+
+func acceptListener(ln listener.Listener) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Alert(err)
@@ -60,27 +84,28 @@ func (this *Server) accept(ln listener.Listener) {
 	defer func() {
 		_ = ln.Close()
 	}()
-	for !this.SCC.Stopped() {
+	for !scc.Stopped() {
 		conn, err := ln.Accept()
 		if err == nil {
-			_, err = this.New(conn)
+			_, err = New(conn)
 		}
-		if err != nil && !errors.Is(err, net.ErrClosed) && !this.SCC.Stopped() {
+		if err != nil && !errors.Is(err, net.ErrClosed) && !scc.Stopped() {
 			logger.Error("tcp listener.Accept Error:%v", err)
 		}
 	}
 }
 
 // Connect 连接服务器address
-func (this *Server) Connect(address string) (socket *Socket, err error) {
-	conn, err := this.tryConnect(address)
+func Connect(address string) (socket *Socket, err error) {
+	conn, err := tryConnect(address)
 	if err != nil {
 		return nil, err
 	}
-	return this.New(conn)
+	serverStarting()
+	return New(conn)
 }
 
-func (this *Server) tryConnect(s string) (listener.Conn, error) {
+func tryConnect(s string) (listener.Conn, error) {
 	address := utils.NewAddress(s)
 	if address.Scheme == "" {
 		address.Scheme = "tcp"

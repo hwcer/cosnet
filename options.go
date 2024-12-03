@@ -7,8 +7,7 @@ var Options = struct {
 	ConnectMaxSize       int32  //连接人数
 	SocketHeartbeat      uint32 //(MS)服务器心跳,用来检测玩家僵尸连接
 	SocketConnectTime    uint32 //(MS)没有动作被判断掉线
-	SocketReconnectTime  uint32 //(MS)掉线后等待断线重连
-	SocketDestroyingTime uint32 //(MS)强制踢掉线后登录最后消息发送完的时间
+	SocketDisconnectTime uint32 //(MS)掉线后等待断线重连
 	AutoCompressSize     uint32 //自动压缩
 	ClientReconnectMax   uint16 //断线重连最大尝试次数
 	ClientReconnectTime  uint16 //断线重连每次等待时间(MS) ClientReconnectTime * ReconnectNum
@@ -18,8 +17,7 @@ var Options = struct {
 	ConnectMaxSize:       50000,
 	SocketHeartbeat:      2000,
 	SocketConnectTime:    5000,
-	SocketReconnectTime:  10000,
-	SocketDestroyingTime: 1000,
+	SocketDisconnectTime: 10000,
 	ClientReconnectMax:   1000,
 	ClientReconnectTime:  5000,
 	UdpServerWorker:      64,

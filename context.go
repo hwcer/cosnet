@@ -10,12 +10,6 @@ type Context struct {
 	Message message.Message
 }
 
-//	func (this *Context) UUID() (r string) {
-//		if p := this.Socket.Player(); p != nil {
-//			r = p.UUID()
-//		}
-//		return
-//	}
 func (this *Context) Path() string {
 	return this.Message.Path()
 }
