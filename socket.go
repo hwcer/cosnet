@@ -95,7 +95,8 @@ func (sock *Socket) OAuth(v any, h ...func(*Socket)) {
 		logger.Error("unknown OAuth arg type:%v", v)
 		return
 	}
-	sock.SetStatus(StatusTypeOAuth, h...)
+	r := sock.SetStatus(StatusTypeOAuth, h...)
+	r.Done()
 }
 
 func (sock *Socket) Errorf(format any, args ...any) {

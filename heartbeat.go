@@ -20,18 +20,23 @@ func (s Status) Disabled() bool {
 	return s == StatusTypeReleased
 }
 
-type statusMsg struct {
+type StatusHandle struct {
 	status Status
 	socket *Socket
 	handle []func(*Socket)
+	c      chan struct{}
 }
 
-var statusChan chan *statusMsg
+func (sh *StatusHandle) Done() {
+	<-sh.c
+}
+
+var statusChan chan *StatusHandle
 
 // 11v9
 // heartbeat 启动协程定时清理无效用户
 func heartbeat(ctx context.Context) {
-	statusChan = make(chan *statusMsg, 100)
+	statusChan = make(chan *StatusHandle, 100)
 	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
 	ticker := time.NewTimer(t)
 	defer ticker.Stop()
@@ -55,11 +60,12 @@ func doHeartbeat(ctx context.Context) {
 	})
 }
 
-func doStatusHandle(m *statusMsg) {
+func doStatusHandle(m *StatusHandle) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Alert("Recovered in doStatusHandle", r)
 		}
+		close(m.c)
 	}()
 	if m.socket.status == StatusTypeReleased {
 		return
@@ -103,18 +109,18 @@ func (sock *Socket) GetStatus() Status {
 // SetStatus 设置状态
 //
 //	异步模式 ,后续任务需要在handle中执行
-func (sock *Socket) SetStatus(status Status, handle ...func(*Socket)) {
-	m := &statusMsg{socket: sock, status: status, handle: handle}
-	go func() {
-		statusChan <- m
-	}()
+func (sock *Socket) SetStatus(status Status, handle ...func(*Socket)) *StatusHandle {
+	m := &StatusHandle{socket: sock, status: status, handle: handle}
+	m.c = make(chan struct{})
+	statusChan <- m
+	return m
 }
 
 func (sock *Socket) Release(handle ...func(*Socket)) {
 	arr := make([]func(*Socket), 0, len(handle)+1)
 	arr = append(arr, doReleased)
 	arr = append(arr, handle...)
-	sock.SetStatus(StatusTypeReleased, arr...)
+	_ = sock.SetStatus(StatusTypeReleased, arr...)
 }
 
 // Disconnect 掉线,包含网络超时，网络错误
@@ -122,7 +128,7 @@ func (sock *Socket) Disconnect(handle ...func(*Socket)) {
 	arr := make([]func(*Socket), 0, len(handle)+1)
 	arr = append(arr, doDisconnect)
 	arr = append(arr, handle...)
-	sock.SetStatus(StatusTypeDisconnect, arr...)
+	_ = sock.SetStatus(StatusTypeDisconnect, arr...)
 }
 
 func doReleased(sock *Socket) {
