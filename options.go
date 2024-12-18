@@ -15,7 +15,7 @@ var Options = struct {
 }{
 	WriteChanSize:        10,
 	ConnectMaxSize:       50000,
-	SocketHeartbeat:      2000,
+	SocketHeartbeat:      10000,
 	SocketConnectTime:    5000,
 	SocketDisconnectTime: 10000,
 	ClientReconnectMax:   1000,

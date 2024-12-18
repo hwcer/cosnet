@@ -125,6 +125,9 @@ func (sock *Socket) Send(path string, data any, async ...any) (err error) {
 	if err = m.Marshal(path, data); err != nil {
 		return
 	}
+	if m.Size() == 0 {
+		return values.Errorf(0, "msg size is zero:%v", data)
+	}
 	return sock.Write(m, async...)
 }
 
@@ -191,7 +194,6 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		if err != nil {
 			Errorf(socket, err)
 		}
-		defer message.Release(msg)
 	}()
 
 	path := msg.Path()

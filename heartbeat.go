@@ -61,7 +61,7 @@ func doStatusHandle(m *statusMsg) {
 			logger.Alert("Recovered in doStatusHandle", r)
 		}
 	}()
-	if m.status == StatusTypeReleased {
+	if m.socket.status == StatusTypeReleased {
 		return
 	}
 	if m.status > 0 {
@@ -82,7 +82,7 @@ func (sock *Socket) doHeartbeat() {
 			sock.release()
 		}
 	case StatusTypeOAuth:
-		if Options.SocketConnectTime > 0 || t > Options.SocketConnectTime {
+		if Options.SocketConnectTime > 0 && t > Options.SocketConnectTime {
 			sock.status = StatusTypeDisconnect
 			sock.disconnect()
 		}

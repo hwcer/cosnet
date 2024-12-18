@@ -59,17 +59,19 @@ func Accept(ln listener.Listener) {
 	scc.Try(func(ctx context.Context) {
 		acceptListener(ln)
 	})
-	serverStarting()
+	Start()
 }
 
-func serverStarting() {
+func Start() bool {
 	if atomic.CompareAndSwapInt32(&started, 0, 1) {
 		scc.CGO(heartbeat)
-		scc.Trigger(serverStopped)
+		scc.Trigger(stop)
+		return true
 	}
+	return false
 }
 
-func serverStopped() {
+func stop() {
 	for _, l := range instance {
 		_ = l.Close()
 	}
@@ -101,7 +103,7 @@ func Connect(address string) (socket *Socket, err error) {
 	if err != nil {
 		return nil, err
 	}
-	serverStarting()
+	Start()
 	return New(conn)
 }
 

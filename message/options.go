@@ -14,7 +14,7 @@ var Options = struct {
 	Binder      binder.Interface
 	Capacity    int //message []byte 默认长度
 	MagicNumber byte
-	MaxDataSize int32
+	MaxDataSize uint32
 	New         func() Message
 	Head        func() []byte //包头
 }{
@@ -28,7 +28,7 @@ var Options = struct {
 }
 
 type Message interface {
-	Size() int32
+	Size() uint32
 	Path() string
 	Body() []byte
 	Reset([]byte)                                    //使用完成二进制包体重置MESSAGE

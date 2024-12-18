@@ -5,58 +5,74 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 )
 
 const messageHeadSize = 5
 
 // message 默认使用路径模式集中注册协议
-// path : path路径字节数
+
+// head  [MagicNumber,uint32(bytes)]
 // body : body数据字节数
-// bytes : path + body
+// bytes :  len(path) + path + body
 
 // path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
 
 type message struct {
-	size  int32 //4    bytes长度
-	head  []byte
+	i     int    // path start index
+	j     int    // body start index
+	size  uint32 //4    bytes长度
 	bytes []byte //数据   [int32][path][body]
-	l     int    //path
+
 }
 
 // Size 包体总长
-func (m *message) Size() int32 {
+func (m *message) Size() uint32 {
 	return m.size
 }
 
-func (m *message) length() int {
-	if m.l == 0 {
-		m.l = int(binary.BigEndian.Uint32(m.bytes[0:4]))
+func (m *message) parse() (i int, j int) {
+	if m.i == 0 {
+		if m.i = bytes.IndexByte(m.bytes, '/'); m.i >= 0 {
+			var e error
+			if m.j, e = strconv.Atoi(string(m.bytes[:m.i])); e == nil {
+				m.j += m.i
+			} else {
+				m.i = -1
+			}
+		} else {
+			m.i = -1
+		}
 	}
-	return m.l
+	return m.i, m.j
 }
 
 // Path 路径
 func (m *message) Path() string {
-	s := m.length() + 4
-	return string(m.bytes[4:s])
+	i, j := m.parse()
+	if i <= 0 {
+		return ""
+	}
+	return string(m.bytes[i:j])
 }
 
 // Body 消息体数据  [0,,,,10,11,12 .....]
 func (m *message) Body() []byte {
-	s := m.length() + 4
-	return m.bytes[s:]
+	i, j := m.parse()
+	if i <= 0 {
+		return nil
+	}
+	return m.bytes[j:]
 }
 
 // Verify 校验包体是否正常
 func (m *message) Verify() error {
-	if len(m.bytes) < 4 {
-		return fmt.Errorf("message size is too small")
+	i, j := m.parse()
+	if i <= 0 {
+		return nil
 	}
-	s := m.length() + 4
-	if l := len(m.bytes); l < s {
-		if l > 255 {
-			l = 255
-		}
+	if l := len(m.bytes); l < j {
 		return fmt.Errorf("message too short:%v", string(m.bytes[0:l]))
 	}
 	return nil
@@ -70,7 +86,7 @@ func (m *message) Parse(head []byte) error {
 	if head[0] != Options.MagicNumber {
 		return ErrMsgHeadIllegal
 	}
-	m.size = int32(binary.BigEndian.Uint32(head[1:5]))
+	m.size = binary.BigEndian.Uint32(head[1:5])
 	if m.size > Options.MaxDataSize {
 		return ErrMsgDataSizeTooLong
 	}
@@ -78,16 +94,14 @@ func (m *message) Parse(head []byte) error {
 }
 
 // Bytes 生成二进制文件
-func (m *message) Bytes(w io.Writer, head bool) (n int, err error) {
+func (m *message) Bytes(w io.Writer, includeHeader bool) (n int, err error) {
 	var r int
 	size := m.Size()
-	if head {
-		if m.head == nil {
-			m.head = make([]byte, messageHeadSize)
-		}
-		m.head[0] = Options.MagicNumber
-		binary.BigEndian.PutUint32(m.head[1:5], uint32(m.size))
-		if r, err = w.Write(m.head); err == nil {
+	if includeHeader {
+		head := make([]byte, messageHeadSize)
+		head[0] = Options.MagicNumber
+		binary.BigEndian.PutUint32(head[1:5], uint32(m.size))
+		if r, err = w.Write(head); err == nil {
 			n += r
 		} else {
 			return
@@ -122,14 +136,19 @@ func (m *message) Write(r io.Reader) (n int, err error) {
 
 // Marshal 将一个对象放入Message.data
 func (m *message) Marshal(path string, body any) error {
-	b := []byte(path)
-	m.l = len(b)
-	if len(m.bytes) < 4 {
-		m.bytes = make([]byte, 4, Options.Capacity)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
 	}
-	binary.BigEndian.PutUint32(m.bytes[0:4], uint32(m.l))
-	buffer := bytes.NewBuffer(m.bytes[0:4])
+	b := []byte(path)
+	l := len(b)
+	s := strconv.Itoa(l)
+	m.i = len(s)
+	m.j = m.i + l
+	buffer := bytes.NewBuffer(m.bytes)
+	buffer.Reset()
+	buffer.WriteString(s)
 	buffer.Write(b)
+
 	var err error
 	switch v := body.(type) {
 	case []byte:
@@ -141,11 +160,11 @@ func (m *message) Marshal(path string, body any) error {
 		return err
 	}
 	m.bytes = buffer.Bytes()
-	m.size = int32(len(m.bytes))
+	m.size = uint32(len(m.bytes))
 	return nil
 }
 func (m *message) Reset(b []byte) {
-	m.size = int32(len(b))
+	m.size = uint32(len(b))
 	m.bytes = b
 }
 
@@ -156,5 +175,6 @@ func (m *message) Unmarshal(i interface{}) (err error) {
 
 func (m *message) Release() {
 	m.size = 0
-	m.l = 0
+	m.i = 0
+	m.j = 0
 }
