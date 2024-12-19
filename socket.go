@@ -30,27 +30,31 @@ func NewSocket(conn listener.Conn) *Socket {
 
 // Socket 基础网络连接
 type Socket struct {
-	id        uint64
-	conn      listener.Conn
-	data      *session.Data
-	stop      chan struct{}
-	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
-	status    Status
+	id     uint64
+	conn   listener.Conn
+	data   *session.Data
+	stop   chan struct{}
+	cwrite chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
+	//status    Status
+	closed    int32
 	heartbeat uint32
 }
 
-func (sock *Socket) release() {
-	sockets.Delete(sock.Id())
-	sock.Emit(EventTypeReleased)
-}
-func (sock *Socket) disconnect() {
-	defer func() { _ = recover() }()
-	if sock.stop != nil {
-		close(sock.stop)
+func (sock *Socket) disconnect() bool {
+	if !atomic.CompareAndSwapInt32(&sock.closed, 0, 1) {
+		return false
 	}
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Alert("Socket disconnect:%v", err)
+		}
+	}()
+	close(sock.stop)
 	_ = sock.conn.Close()
-	sock.KeepAlive()
 	sock.Emit(EventTypeDisconnect)
+	sockets.Delete(sock.Id())
+	sock.data = nil
+	return true
 }
 
 func (sock *Socket) Id() uint64 {
@@ -60,14 +64,14 @@ func (sock *Socket) Id() uint64 {
 func (sock *Socket) Data() *session.Data {
 	return sock.data
 }
-func (sock *Socket) Emit(e EventType) bool {
-	return Emit(e, sock)
+func (sock *Socket) Emit(e EventType) {
+	Emit(e, sock)
 }
 
 // Close 强制关闭,无法重连
 // todo 状态控制等待发送完再关闭
 func (sock *Socket) Close(msg ...message.Message) {
-	if sock.status.Disabled() {
+	if sock.closed > 0 {
 		return
 	}
 	defer func() {
@@ -79,7 +83,7 @@ func (sock *Socket) Close(msg ...message.Message) {
 	if len(msg) > 0 {
 		sock.KeepAlive()
 	}
-	sock.Disconnect()
+	sock.disconnect()
 }
 
 // OAuth 身份认证
@@ -95,8 +99,7 @@ func (sock *Socket) OAuth(v any, h ...func(*Socket)) {
 		logger.Error("unknown OAuth arg type:%v", v)
 		return
 	}
-	r := sock.SetStatus(StatusTypeOAuth, h...)
-	r.Done()
+	sock.Emit(EventTypeAuthentication)
 }
 
 func (sock *Socket) Errorf(format any, args ...any) {
@@ -141,7 +144,7 @@ func (sock *Socket) Write(m message.Message, async ...any) (err error) {
 			err = fmt.Errorf("%v", e)
 		}
 	}()
-	if sock.status.Disabled() {
+	if sock.closed > 0 {
 		return ErrSocketClosed
 	}
 	if len(async) == 0 {
@@ -160,10 +163,10 @@ func (sock *Socket) Write(m message.Message, async ...any) (err error) {
 }
 
 func (sock *Socket) readMsg(_ context.Context) {
-	defer sock.Disconnect()
-	for {
+	defer sock.disconnect()
+	for !scc.Stopped() {
 		if msg, err := sock.conn.ReadMessage(); err != nil {
-			if err != io.EOF && !errors.Is(err, net.ErrClosed) && !scc.Stopped() {
+			if err != io.EOF && !errors.Is(err, net.ErrClosed) {
 				sock.Errorf(err)
 			}
 			return
@@ -220,7 +223,7 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 }
 
 func (sock *Socket) writeMsg(ctx context.Context) {
-	defer sock.Disconnect()
+	defer sock.disconnect()
 	for {
 		select {
 		case <-ctx.Done():

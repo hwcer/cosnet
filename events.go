@@ -13,28 +13,22 @@ const (
 	EventTypeConnected                           //连接成功
 	EventTypeAuthentication                      //身份认证
 	EventTypeDisconnect                          //断开连接
-	EventTypeReconnected                         //重登录
-	EventTypeReplaced                            //被顶号
-	EventTypeReleased                            //释放所有信息
 )
 
-type EventsFunc func(*Socket, any) bool
+type EventsFunc func(*Socket, any)
 
 func On(e EventType, f EventsFunc) {
 	emitter[e] = append(emitter[e], f)
 }
 
-func Emit(e EventType, s *Socket, attach ...interface{}) (r bool) {
-	var v interface{}
+func Emit(e EventType, s *Socket, attach ...any) {
+	var v any
 	if len(attach) > 0 {
 		v = attach[0]
 	}
 	for _, f := range emitter[e] {
-		if r = f(s, v); !r {
-			return r
-		}
+		f(s, v)
 	}
-	return true
 }
 
 // Errorf 抛出一个异常
