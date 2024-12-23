@@ -124,9 +124,9 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	return nil
 }
 
-func (sock *Socket) Send(path string, data any, async ...any) (err error) {
+func (sock *Socket) Send(index uint32, path string, data any, async ...any) (err error) {
 	m := message.Require()
-	if err = m.Marshal(path, data); err != nil {
+	if err = m.Marshal(index, path, data); err != nil {
 		return
 	}
 	if m.Size() == 0 {
@@ -216,10 +216,13 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 	c := &Context{Socket: socket, Message: msg}
 	var reply interface{}
 	reply, err = handler.Caller(node, c)
-	if err != nil {
-		return
+	if err == nil {
+		err = handler.Serialize(c, reply)
 	}
-	err = handler.Serialize(c, reply)
+	if err != nil {
+		sock.Errorf(err)
+	}
+
 }
 
 func (sock *Socket) writeMsg(ctx context.Context) {
