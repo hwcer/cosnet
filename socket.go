@@ -14,7 +14,6 @@ import (
 	"net"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync/atomic"
 )
 
@@ -124,9 +123,9 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	return nil
 }
 
-func (sock *Socket) Send(index uint32, path string, data any, async ...any) (err error) {
+func (sock *Socket) Send(path string, query values.Values, data any, async ...any) (err error) {
 	m := message.Require()
-	if err = m.Marshal(index, path, data); err != nil {
+	if err = m.Marshal(path, query, data); err != nil {
 		return
 	}
 	if m.Size() == 0 {
@@ -199,10 +198,10 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 			Errorf(socket, err)
 		}
 	}()
-
-	path := msg.Path()
-	if i := strings.Index(path, "?"); i >= 0 {
-		path = path[0:i]
+	var path string
+	if path, err = msg.Path(); err != nil {
+		logger.Alert("Socket handle:%v", err)
+		return
 	}
 	node, ok := Registry.Match(path)
 	if !ok {

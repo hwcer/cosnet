@@ -77,7 +77,7 @@ func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
 		return err
 	}
 	if err, _ = reply.(error); err == nil {
-		err = c.Send(c.Message.Index(), c.Message.Path(), reply)
+		err = c.Reply(reply)
 	}
 	return
 }

@@ -81,7 +81,7 @@ func Register(i interface{}, prefix ...string) error {
 func Broadcast(path string, data any, filter func(*Socket) bool) {
 	Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
-			_ = sock.Send(0, path, data)
+			_ = sock.Send(path, nil, data)
 		}
 		return true
 	})
