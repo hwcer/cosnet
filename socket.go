@@ -128,9 +128,6 @@ func (sock *Socket) Send(path string, query values.Values, data any, async ...an
 	if err = m.Marshal(path, query, data); err != nil {
 		return
 	}
-	if m.Size() == 0 {
-		return values.Errorf(0, "msg size is zero:%v", data)
-	}
 	return sock.Write(m, async...)
 }
 
