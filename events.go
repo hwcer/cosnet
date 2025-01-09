@@ -11,6 +11,7 @@ const (
 	EventTypeError          EventType = iota + 1 //系统级别错误
 	EventTypeMessage                             //所有未注册的消息
 	EventTypeConnected                           //连接成功
+	EventTypeReconnected                         //断线重连
 	EventTypeAuthentication                      //身份认证
 	EventTypeDisconnect                          //断开连接
 )

@@ -86,7 +86,8 @@ func (sock *Socket) Close(msg ...message.Message) {
 }
 
 // OAuth 身份认证
-func (sock *Socket) OAuth(v any, h ...func(*Socket)) {
+// re 是否断线重连
+func (sock *Socket) OAuth(v any, re bool, h ...func(*Socket)) {
 	switch d := v.(type) {
 	case map[string]interface{}:
 		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), "", d)
@@ -98,7 +99,12 @@ func (sock *Socket) OAuth(v any, h ...func(*Socket)) {
 		logger.Error("unknown OAuth arg type:%v", v)
 		return
 	}
-	sock.Emit(EventTypeAuthentication)
+	if re {
+		sock.Emit(EventTypeReconnected)
+	} else {
+		sock.Emit(EventTypeAuthentication)
+	}
+
 }
 
 func (sock *Socket) Errorf(format any, args ...any) {
