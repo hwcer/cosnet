@@ -129,7 +129,7 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	return nil
 }
 
-func (sock *Socket) Send(path string, query values.Values, data any, async ...any) (err error) {
+func (sock *Socket) Send(path string, query map[string]any, data any, async ...any) (err error) {
 	m := message.Require()
 	if err = m.Marshal(path, query, data); err != nil {
 		return

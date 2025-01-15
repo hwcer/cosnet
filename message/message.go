@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/hwcer/cosgo/binder"
-	"github.com/hwcer/cosgo/values"
 	"io"
 	"net/url"
 	"strings"
@@ -73,8 +72,8 @@ func (m *message) Url() *url.URL {
 func (m *message) Path() (r string, err error) {
 	return m.Url().RawPath, nil
 }
-func (m *message) Query() values.Values {
-	r := make(values.Values)
+func (m *message) Query() map[string]any {
+	r := make(map[string]any)
 	q := m.Url().Query()
 	for k, _ := range q {
 		r[k] = q.Get(k)
@@ -157,14 +156,14 @@ func (m *message) Write(r io.Reader) (n int, err error) {
 }
 
 // Marshal 将一个对象放入Message.data
-func (m *message) Marshal(path string, query values.Values, body any, bs ...binder.Binder) error {
+func (m *message) Marshal(path string, query map[string]any, body any, bs ...binder.Binder) error {
 	if len(query) > 0 {
 		b := strings.Builder{}
 		b.WriteString(path)
 		b.WriteString("?")
 		q := url.Values{}
-		for k, _ := range query {
-			q.Set(k, query.GetString(k))
+		for k, v := range query {
+			q.Set(k, fmt.Sprintf("%v", v))
 		}
 		b.WriteString(q.Encode())
 		path = b.String()
@@ -216,5 +215,5 @@ func (m *message) Binder(bs ...binder.Binder) binder.Binder {
 	if len(bs) > 0 && bs[0] != nil {
 		return bs[0]
 	}
-	return Options.Binder
+	return Binder
 }

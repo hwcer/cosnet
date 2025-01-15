@@ -1,6 +1,7 @@
 package cosnet
 
 import (
+	"fmt"
 	"github.com/hwcer/cosgo/binder"
 	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/cosnet/message"
@@ -25,11 +26,12 @@ func (this *Context) Binder() binder.Binder {
 		return this.binder
 	}
 	q := this.Message.Query()
-	if t := q.GetString(binder.ContentType); t != "" {
+	i := q[binder.ContentType]
+	if t := fmt.Sprintf("%v", i); t != "" {
 		this.binder = binder.New(t)
 	}
 	if this.binder == nil {
-		this.binder = message.Options.Binder
+		this.binder = message.Binder
 	}
 	return this.binder
 }
