@@ -26,9 +26,10 @@ func (this *Context) Binder() binder.Binder {
 		return this.binder
 	}
 	q := this.Message.Query()
-	i := q[binder.ContentType]
-	if t := fmt.Sprintf("%v", i); t != "" {
-		this.binder = binder.New(t)
+	if i, ok := q[binder.ContentType]; ok {
+		if t := fmt.Sprintf("%v", i); t != "" {
+			this.binder = binder.New(t)
+		}
 	}
 	if this.binder == nil {
 		this.binder = message.Binder
