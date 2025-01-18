@@ -129,18 +129,35 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	return nil
 }
 
-func (sock *Socket) Send(path string, query map[string]any, data any, async ...any) (err error) {
+func (sock *Socket) Send(path string, query map[string]string, data any) (err error) {
 	m := message.Require()
 	if err = m.Marshal(path, query, data); err != nil {
 		return
 	}
-	return sock.Write(m, async...)
+	return sock.Write(m)
+}
+
+// Async 异步写入数据
+func (sock *Socket) Async(m message.Message) (s chan struct{}, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+	}()
+	if sock.closed > 0 {
+		return s, ErrSocketClosed
+	}
+	s = make(chan struct{})
+	go func() {
+		sock.cwrite <- m
+		close(s)
+	}()
+	return s, nil
 }
 
 // Write 外部写入消息,慎用,注意发送失败时消息回收,参考Send
-// async 异步发送
 // 参数中如果有 func(socket *Socket) 类型，写入通道后 执行回调函数
-func (sock *Socket) Write(m message.Message, async ...any) (err error) {
+func (sock *Socket) Write(m message.Message) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("%v", e)
@@ -149,18 +166,7 @@ func (sock *Socket) Write(m message.Message, async ...any) (err error) {
 	if sock.closed > 0 {
 		return ErrSocketClosed
 	}
-	if len(async) == 0 {
-		sock.cwrite <- m
-	} else {
-		go func() {
-			sock.cwrite <- m
-			for _, v := range async {
-				if f, ok := v.(func(socket *Socket)); ok {
-					f(sock)
-				}
-			}
-		}()
-	}
+	sock.cwrite <- m
 	return
 }
 

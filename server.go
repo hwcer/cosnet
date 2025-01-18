@@ -5,6 +5,7 @@ import (
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosnet/listener"
+	"github.com/hwcer/cosnet/message"
 	"golang.org/x/sync/syncmap"
 )
 
@@ -78,10 +79,10 @@ func Register(i interface{}, prefix ...string) error {
 }
 
 // Broadcast 广播,filter 过滤函数，如果不为nil且返回false则不对当期socket进行发送消息
-func Broadcast(path string, data any, filter func(*Socket) bool) {
+func Broadcast(m message.Message, filter func(*Socket) bool) {
 	Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
-			_ = sock.Send(path, nil, data)
+			_, _ = sock.Async(m)
 		}
 		return true
 	})

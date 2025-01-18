@@ -1,15 +1,11 @@
 package cosnet
 
 import (
-	"fmt"
-	"github.com/hwcer/cosgo/binder"
-	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/cosnet/message"
 )
 
 type Context struct {
 	*Socket
-	binder  binder.Binder
 	Message message.Message
 }
 
@@ -18,30 +14,17 @@ func (this *Context) Path() (string, error) {
 }
 
 func (this *Context) Bind(i any) error {
-	return this.Message.Unmarshal(i, this.Binder())
+	return this.Message.Unmarshal(i)
 }
 
-func (this *Context) Binder() binder.Binder {
-	if this.binder != nil {
-		return this.binder
-	}
-	q := this.Message.Query()
-	if i, ok := q[binder.ContentType]; ok {
-		if t := fmt.Sprintf("%v", i); t != "" {
-			this.binder = binder.New(t)
-		}
-	}
-	if this.binder == nil {
-		this.binder = message.Binder
-	}
-	return this.binder
-}
-
-func (this *Context) Send(path string, query values.Values, data any) error {
+func (this *Context) Send(path string, query map[string]string, data any) error {
 	m := message.Require()
-	if err := m.Marshal(path, query, data, this.Binder()); err != nil {
+	if err := m.Marshal(path, query, data); err != nil {
 		return err
 	}
+	return this.Socket.Write(m)
+}
+func (this *Context) Write(m message.Message) error {
 	return this.Socket.Write(m)
 }
 
@@ -51,8 +34,7 @@ func (this *Context) Reply(v any) error {
 	if err != nil {
 		return err
 	}
-	q := this.Message.Query()
-	return this.Send(p, q, v)
+	return this.Send(p, this.Message.Query(), v)
 }
 
 // Error 使用当前路径向客户端写入一个默认错误码的信息

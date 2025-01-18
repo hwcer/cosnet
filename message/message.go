@@ -2,17 +2,14 @@ package message
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"github.com/hwcer/cosgo/binder"
 	"io"
-	"net/url"
-	"strings"
 )
 
-const messageHeadSize = 5
+//const messageHeadSize = 5
 
-const messagePathSize = 2 //Path len
+//const messagePathSize = 2 //Path len
 //const messageIndexSize = 4 //index len
 
 // message 默认使用路径模式集中注册协议
@@ -31,85 +28,33 @@ const messagePathSize = 2 //Path len
 // path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
 
 type message struct {
-	size  uint32 //4    bytes长度
-	bytes []byte //数据   [int8][path][body]
-	l     uint16 //索引   path.len
-	u     *url.URL
-}
-
-// Size 包体总长
-func (m *message) Size() uint32 {
-	return m.size
-}
-
-//func (m *message) Index() uint32 {
-//	return binary.BigEndian.Uint32(m.bytes[0:messageIndexSize])
-//}
-
-func (m *message) length() int {
-	if m.l == 0 {
-		m.l = binary.BigEndian.Uint16(m.bytes[0:messagePathSize])
-	}
-	return int(m.l)
-}
-
-func (m *message) Url() *url.URL {
-	if m.u != nil {
-		return m.u
-	}
-	s := m.length() + messagePathSize
-	path := string(m.bytes[messagePathSize:s])
-	i, err := url.Parse(path)
-	if err != nil {
-		m.u = &url.URL{Path: "/", RawPath: "/"}
-	} else {
-		m.u = i
-	}
-	return m.u
+	Head
+	bytes []byte //数据
 }
 
 // Path 路径
 func (m *message) Path() (r string, err error) {
-	return m.Url().RawPath, nil
-}
-func (m *message) Query() map[string]any {
-	r := make(map[string]any)
-	q := m.Url().Query()
-	for k, _ := range q {
-		r[k] = q.Get(k)
+	if m.tags.Has(TagsUseUrlPath) {
+		r = string(m.bytes[0:int(m.code)])
+	} else {
+		r, err = Transform.Path(m.code)
 	}
-	return r
+	return
 }
 
-// Body 消息体数据  [0,,,,10,11,12 .....]
+// Body 消息体
 func (m *message) Body() []byte {
-	s := m.length() + messagePathSize
-	return m.bytes[s:]
+	if m.tags.Has(TagsUseUrlPath) {
+		return m.bytes[int(m.code):]
+	} else {
+		return m.bytes
+	}
 }
 
 // Verify 校验包体是否正常
 func (m *message) Verify() error {
-	s := m.length() + messagePathSize
-	if l := len(m.bytes); l < s {
-		if l > 255 {
-			l = 255
-		}
-		return fmt.Errorf("message too short:%v", string(m.bytes[0:l]))
-	}
-	return nil
-}
-
-// Parse 解析二进制头并填充到对应字段
-func (m *message) Parse(head []byte) error {
-	if len(head) != messageHeadSize {
-		return ErrMsgHeadIllegal
-	}
-	if head[0] != Options.MagicNumber {
-		return ErrMsgHeadIllegal
-	}
-	m.size = binary.BigEndian.Uint32(head[1:5])
-	if m.size > Options.MaxDataSize {
-		return ErrMsgDataSizeTooLong
+	if l := len(m.bytes); l != int(m.size) {
+		return fmt.Errorf("message too short:%v", string(m.bytes))
 	}
 	return nil
 }
@@ -119,9 +64,7 @@ func (m *message) Bytes(w io.Writer, includeHeader bool) (n int, err error) {
 	var r int
 	size := m.Size()
 	if includeHeader {
-		head := Options.Head()
-		head[0] = Options.MagicNumber
-		binary.BigEndian.PutUint32(head[1:5], m.size)
+		head := m.Head.bytes()
 		if r, err = w.Write(head); err == nil {
 			n += r
 		} else {
@@ -155,35 +98,32 @@ func (m *message) Write(r io.Reader) (n int, err error) {
 	return
 }
 
-// Marshal 将一个对象放入Message.data
-func (m *message) Marshal(path string, query map[string]any, body any, bs ...binder.Binder) error {
-	if len(query) > 0 {
-		b := strings.Builder{}
-		b.WriteString(path)
-		b.WriteString("?")
-		q := url.Values{}
-		for k, v := range query {
-			q.Set(k, fmt.Sprintf("%v", v))
-		}
-		b.WriteString(q.Encode())
-		path = b.String()
+// Reset  WS UDP 数据包模式直接填充
+func (m *message) Reset(b []byte) error {
+	if len(b) < messageHeadSize {
+		return io.ErrUnexpectedEOF
 	}
+	if err := m.Head.Parse(b[0:messageHeadSize]); err != nil {
+		return err
+	}
+	m.bytes = b[messageHeadSize:]
+	return nil
+}
 
-	b := []byte(path)
-	l := len(m.bytes)
-	m.l = uint16(l)
-	head := make([]byte, messagePathSize)
-	binary.BigEndian.PutUint16(head[0:l], m.l)
+// Marshal 将一个对象放入Message.data
+func (m *message) Marshal(path string, query map[string]string, body any) (err error) {
+	if err = m.Head.format(path, query); err != nil {
+		return
+	}
 	buffer := bytes.NewBuffer(m.bytes[0:0])
-	buffer.Write(head)
-	buffer.Write(b)
-
-	var err error
+	if m.tags.Has(TagsUseUrlPath) {
+		buffer.WriteString(path)
+	}
 	switch v := body.(type) {
 	case []byte:
 		buffer.Write(v)
 	default:
-		bi := m.Binder(bs...)
+		bi := m.Binder()
 		err = bi.Encode(buffer, body)
 	}
 	if err != nil {
@@ -193,27 +133,17 @@ func (m *message) Marshal(path string, query map[string]any, body any, bs ...bin
 	m.size = uint32(len(m.bytes))
 	return nil
 }
-func (m *message) Reset(b []byte) error {
-	m.size = uint32(len(b))
-	m.bytes = b
-	return nil
-}
 
 // Unmarshal 解析Message body
-func (m *message) Unmarshal(i any, bs ...binder.Binder) (err error) {
-	bi := m.Binder(bs...)
+func (m *message) Unmarshal(i any) (err error) {
+	bi := m.Binder()
 	return bi.Unmarshal(m.Body(), i)
 }
 
 func (m *message) Release() {
-	m.size = 0
-	m.l = 0
-	m.u = nil
+	m.Head.Release()
 }
 
-func (m *message) Binder(bs ...binder.Binder) binder.Binder {
-	if len(bs) > 0 && bs[0] != nil {
-		return bs[0]
-	}
-	return Binder
+func (m *message) Binder() binder.Binder {
+	return m.tags.Binder()
 }

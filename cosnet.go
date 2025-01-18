@@ -25,7 +25,7 @@ var started int32
 //}
 
 func Matcher(r io.Reader) bool {
-	magic := message.Options.MagicNumber
+	magic := message.MagicNumber
 	buf := make([]byte, 1)
 	n, _ := r.Read(buf)
 	return n == 1 && buf[0] == magic
