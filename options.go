@@ -13,7 +13,7 @@ var Options = struct {
 	ClientReconnectTime  uint16 //断线重连每次等待时间(MS) ClientReconnectTime * ReconnectNum
 	UdpServerWorker      int    //UDP工作进程数量
 }{
-	WriteChanSize:        10,
+	WriteChanSize:        100,
 	ConnectMaxSize:       50000,
 	SocketHeartbeat:      10000,
 	SocketConnectTime:    5000,

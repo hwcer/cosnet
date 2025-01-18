@@ -22,6 +22,7 @@ func (this *Context) Send(path string, query map[string]string, data any) error 
 	if err := m.Marshal(path, query, data); err != nil {
 		return err
 	}
+	//logger.Debug("发送数据包，path:%v,query:%+v", path, query)
 	return this.Socket.Write(m)
 }
 func (this *Context) Write(m message.Message) error {
