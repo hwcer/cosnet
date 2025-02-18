@@ -56,7 +56,7 @@ func Listen(address string) (listener listener.Listener, err error) {
 	return
 }
 func Accept(ln listener.Listener) {
-	scc.Try(func(ctx context.Context) {
+	scc.CGO(func(ctx context.Context) {
 		acceptListener(ln)
 	})
 	Start()

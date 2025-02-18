@@ -15,7 +15,7 @@ const (
 type Head struct {
 	tags  Tags   //1
 	code  uint16 //2 协议码、PATH 长度
-	size  uint32 // 4 BODY总长度
+	size  uint32 // 4 BODY总长度(包含PATH)
 	index uint32 // 4 client_id,server_id
 }
 
@@ -25,8 +25,8 @@ func (h *Head) Size() uint32 {
 }
 func (h *Head) Query() map[string]string {
 	r := make(map[string]string)
-	r[HeadTag] = strconv.FormatUint(uint64(h.index), 10)
-	r[HeadIndex] = string(h.tags)
+	r[HeadTag] = strconv.FormatUint(uint64(h.tags), 10)
+	r[HeadIndex] = strconv.FormatUint(uint64(h.index), 10)
 	return r
 }
 
@@ -39,9 +39,9 @@ func (h *Head) Parse(head []byte) error {
 		return ErrMsgHeadIllegal
 	}
 	h.tags = Tags(head[1])
-	h.code = binary.LittleEndian.Uint16(head[2:4])
-	h.size = binary.LittleEndian.Uint32(head[4:8])
-	h.index = binary.LittleEndian.Uint32(head[8:12])
+	h.code = binary.BigEndian.Uint16(head[2:4])
+	h.size = binary.BigEndian.Uint32(head[4:8])
+	h.index = binary.BigEndian.Uint32(head[8:12])
 	if h.size > Options.MaxDataSize {
 		return ErrMsgDataSizeTooLong
 	}
@@ -51,9 +51,9 @@ func (h *Head) bytes() []byte {
 	head := make([]byte, messageHeadSize)
 	head[0] = MagicNumber
 	head[1] = byte(h.tags)
-	binary.LittleEndian.PutUint16(head[2:4], h.code)
-	binary.LittleEndian.PutUint32(head[4:8], h.size)
-	binary.LittleEndian.PutUint32(head[8:12], h.index)
+	binary.BigEndian.PutUint16(head[2:4], h.code)
+	binary.BigEndian.PutUint32(head[4:8], h.size)
+	binary.BigEndian.PutUint32(head[8:12], h.index)
 	return head
 }
 
