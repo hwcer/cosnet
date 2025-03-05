@@ -10,6 +10,7 @@ const messageHeadSize = 12
 
 const (
 	HeadAtomicIndex = "_m_h_idx"
+	HeadMessageCode = "_m_h_code"
 )
 
 type Head struct {
@@ -28,6 +29,9 @@ func (h *Head) Query() map[string]string {
 	r := make(map[string]string)
 	if t := binder.Type(h.typ); t != nil {
 		r[binder.HeaderContentType] = t.Name
+	}
+	if Options.Mode == HeadModeCode {
+		r[HeadMessageCode] = strconv.Itoa(int(h.code))
 	}
 	r[HeadAtomicIndex] = strconv.FormatUint(uint64(h.index), 10)
 	return r

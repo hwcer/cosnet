@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/hwcer/cosgo/binder"
 	"io"
+	"net/url"
+	"strings"
 )
 
 //const messageHeadSize = 5
@@ -32,14 +34,30 @@ type message struct {
 	bytes []byte //数据
 }
 
-// Path 路径
 func (m *message) Path() (r string, err error) {
 	if Options.Mode == HeadModePath {
 		r = string(m.bytes[0:int(m.code)])
+		if i := strings.Index(r, "?"); i >= 0 {
+			r = r[:i]
+		}
 	} else {
 		r, err = Transform.Path(m.code)
 	}
 	return
+}
+
+func (m *message) Query() map[string]string {
+	r := m.Head.Query()
+	if Options.Mode == HeadModePath {
+		path := string(m.bytes[0:int(m.code)])
+		if i := strings.Index(path, "?"); i >= 0 {
+			vs, _ := url.ParseQuery(path[i+1:])
+			for k, _ := range vs {
+				r[k] = vs.Get(k)
+			}
+		}
+	}
+	return r
 }
 
 // Body 消息体
