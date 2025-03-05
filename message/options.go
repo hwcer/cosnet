@@ -2,30 +2,27 @@ package message
 
 import (
 	"errors"
-	"github.com/hwcer/cosgo/binder"
-	"github.com/hwcer/cosgo/values"
 	"io"
 )
 
-var Binder binder.Binder = binder.Json
-var MagicNumber byte = 0x78
+const (
+	HeadModePath uint8 = 0
+	HeadModeCode uint8 = 1
+)
 
-// Reply 自动回包确认包
-var Reply func(Message) (string, error) = func(m Message) (string, error) {
-	return m.Path()
-}
-
-var Errorf func(code int, format any, args ...any) any = func(code int, format any, args ...any) any {
-	return values.Errorf(code, format, args...)
-}
+const (
+	MagicNumber  byte = 0x77
+	MagicConfirm byte = 0x78 //需要应答
+)
 
 var ErrMsgHeadIllegal = errors.New("message head illegal")
 var ErrMsgDataSizeTooLong = errors.New("message data too long")
 var ErrMsgHeadNotSetTransform = errors.New("code mode, please set the message transform first")
 
 var Options = struct {
-	Pool        bool //是否启用消息池 message pool
-	Capacity    int  //message []byte 默认长度
+	Mode        uint8 //工作模式:0-path, 1-code
+	Pool        bool  //是否启用消息池 message pool
+	Capacity    int   //message []byte 默认长度
 	MaxDataSize uint32
 	New         func() Message
 	Head        func() []byte //包头
@@ -47,7 +44,8 @@ type Message interface {
 	Bytes(w io.Writer, head bool) (n int, err error)             //转换成二进制并发送
 	Write(r io.Reader) (n int, err error)                        //从CONN中写入Size()字节
 	Verify() error                                               //校验包体是否正常
-	Marshal(path string, head map[string]string, body any) error //使用对象填充包体
+	Marshal(path string, body any, meta map[string]string) error //使用对象填充包体
 	Unmarshal(i any) (err error)
 	Release()
+	Confirm() bool //是否需要回复确认包
 }

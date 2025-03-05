@@ -7,11 +7,11 @@ import (
 )
 
 type handleCaller interface {
-	Caller(node *registry.Node, c *Context) interface{}
+	Caller(node *registry.Node, c *Context) any
 }
 type HandlerFilter func(node *registry.Node) bool
-type HandlerCaller func(node *registry.Node, c *Context) (interface{}, error)
-type HandlerSerialize func(c *Context, reply interface{}) (interface{}, error)
+type HandlerCaller func(node *registry.Node, c *Context) any
+type HandlerSerialize func(c *Context, reply any) any
 
 type Handler struct {
 	filter    HandlerFilter
@@ -19,7 +19,7 @@ type Handler struct {
 	serialize HandlerSerialize
 }
 
-func (this *Handler) Use(src interface{}) {
+func (this *Handler) Use(src any) {
 	if v, ok := src.(HandlerFilter); ok {
 		this.filter = v
 	}
@@ -36,7 +36,7 @@ func (this *Handler) Filter(node *registry.Node) bool {
 		return this.filter(node)
 	}
 	if node.IsFunc() {
-		_, ok := node.Method().(func(*Context) interface{})
+		_, ok := node.Method().(func(*Context) any)
 		return ok
 	} else if node.IsMethod() {
 		t := node.Value().Type()
@@ -53,7 +53,7 @@ func (this *Handler) Filter(node *registry.Node) bool {
 	}
 }
 
-func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{}, err error) {
+func (this *Handler) Caller(node *registry.Node, c *Context) (reply any) {
 	if this.caller != nil {
 		return this.caller(node, c)
 	}
@@ -66,18 +66,8 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (reply interface{},
 		r := node.Call(c)
 		reply = r[0].Interface()
 	}
-	return
-}
-
-func (this *Handler) Serialize(c *Context, reply interface{}) (err error) {
 	if this.serialize != nil {
-		reply, err = this.serialize(c, reply)
-	}
-	if err != nil || reply == nil {
-		return err
-	}
-	if err, _ = reply.(error); err == nil {
-		err = c.Reply(reply)
+		reply = this.serialize(c, reply)
 	}
 	return
 }

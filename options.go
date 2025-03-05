@@ -1,5 +1,7 @@
 package cosnet
 
+var S2CConfirm string //自动回包，确认包名，默认原路返回
+
 var Options = struct {
 	//AuthenticationTime  uint16 //(MS)连接后等待登录的时间，默认 0：不需要登录
 	//ReWriteTime         int32  //(MS)写消息失败时，重试间隔时间

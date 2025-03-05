@@ -2,21 +2,22 @@ package message
 
 import (
 	"encoding/binary"
+	"github.com/hwcer/cosgo/binder"
 	"strconv"
 )
 
 const messageHeadSize = 12
 
 const (
-	HeadTag   = "_msg_h_tag"
-	HeadIndex = "_msg_h_idx"
+	HeadAtomicIndex = "_m_h_idx"
 )
 
 type Head struct {
-	tags  Tags   //1
+	magic byte   //1
+	typ   uint8  //编码方式
 	code  uint16 //2 协议码、PATH 长度
-	size  uint32 // 4 BODY总长度(包含PATH)
-	index uint32 // 4 client_id,server_id
+	size  uint32 //4 BODY总长度(包含PATH)
+	index uint32 //4 client_id,server_id
 }
 
 // Size 包体总长
@@ -25,9 +26,16 @@ func (h *Head) Size() uint32 {
 }
 func (h *Head) Query() map[string]string {
 	r := make(map[string]string)
-	r[HeadTag] = strconv.FormatUint(uint64(h.tags), 10)
-	r[HeadIndex] = strconv.FormatUint(uint64(h.index), 10)
+	if t := binder.Type(h.typ); t != nil {
+		r[binder.HeaderContentType] = t.Name
+	}
+	r[HeadAtomicIndex] = strconv.FormatUint(uint64(h.index), 10)
 	return r
+}
+
+// Confirm 是否需要回复
+func (h *Head) Confirm() bool {
+	return h.magic == MagicConfirm
 }
 
 // Parse 解析二进制头并填充到对应字段
@@ -35,10 +43,11 @@ func (h *Head) Parse(head []byte) error {
 	if len(head) != messageHeadSize {
 		return ErrMsgHeadIllegal
 	}
-	if head[0] != MagicNumber {
+	if head[0] != MagicNumber && head[0] != MagicConfirm {
 		return ErrMsgHeadIllegal
 	}
-	h.tags = Tags(head[1])
+	h.magic = head[0]
+	h.typ = uint8(head[1])
 	h.code = binary.BigEndian.Uint16(head[2:4])
 	h.size = binary.BigEndian.Uint32(head[4:8])
 	h.index = binary.BigEndian.Uint32(head[8:12])
@@ -50,23 +59,26 @@ func (h *Head) Parse(head []byte) error {
 func (h *Head) bytes() []byte {
 	head := make([]byte, messageHeadSize)
 	head[0] = MagicNumber
-	head[1] = byte(h.tags)
+	head[1] = byte(h.typ)
 	binary.BigEndian.PutUint16(head[2:4], h.code)
 	binary.BigEndian.PutUint32(head[4:8], h.size)
 	binary.BigEndian.PutUint32(head[8:12], h.index)
 	return head
 }
 
-func (h *Head) format(path string, query map[string]string) (err error) {
-	if i, ok := query[HeadTag]; ok {
-		h.tags = Tags(i[0])
+func (h *Head) format(path string, meta map[string]string) (err error) {
+	if i, ok := meta[binder.HeaderContentType]; ok {
+		if t := binder.Type(i); t != nil {
+			h.typ = t.Id
+		}
 	}
-	if i, ok := query[HeadIndex]; ok {
+
+	if i, ok := meta[HeadAtomicIndex]; ok {
 		n, _ := strconv.Atoi(i)
 		h.index = uint32(n)
 	}
 
-	if h.tags.Has(TagsUseUrlPath) {
+	if Options.Mode == HeadModePath {
 		h.code = uint16(len(path))
 	} else {
 		h.code, err = Transform.Code(path)
@@ -75,7 +87,7 @@ func (h *Head) format(path string, query map[string]string) (err error) {
 }
 
 func (h *Head) Release() {
-	h.tags = 0
+	h.typ = 0
 	h.code = 0
 	h.size = 0
 	h.index = 0

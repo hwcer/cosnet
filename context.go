@@ -1,7 +1,6 @@
 package cosnet
 
 import (
-	"github.com/hwcer/cosgo/logger"
 	"github.com/hwcer/cosnet/message"
 )
 
@@ -18,9 +17,9 @@ func (this *Context) Bind(i any) error {
 	return this.Message.Unmarshal(i)
 }
 
-func (this *Context) Send(path string, query map[string]string, data any) error {
+func (this *Context) Send(path string, data any, query map[string]string) error {
 	m := message.Require()
-	if err := m.Marshal(path, query, data); err != nil {
+	if err := m.Marshal(path, data, query); err != nil {
 		return err
 	}
 	return this.Socket.Write(m)
@@ -30,22 +29,23 @@ func (this *Context) Write(m message.Message) error {
 }
 
 // Reply 使用当前路径回复
-func (this *Context) Reply(v any) error {
-	p, err := message.Reply(this.Message)
+func (this *Context) Reply(v any) (err error) {
+	p := S2CConfirm
+	if p == "" {
+		p, err = this.Message.Path()
+	}
 	if err != nil {
-		logger.Alert("Reply error:%v", err)
 		return err
 	}
-	return this.Send(p, this.Message.Query(), v)
+	return this.Send(p, v, this.Message.Query())
 }
 
 // Error 使用当前路径向客户端写入一个默认错误码的信息
-func (this *Context) Error(err any) error {
-	return this.Errorf(0, err)
+func (this *Context) Error(err any) {
+	Errorf(this.Socket, err)
 }
 
 // Errorf 使用当前路径向客户端写入一个特定错误码的信息
-func (this *Context) Errorf(code int, format any, args ...any) error {
-	msg := message.Errorf(code, format, args...)
-	return this.Reply(msg)
+func (this *Context) Errorf(format any, args ...any) {
+	Errorf(this.Socket, args)
 }

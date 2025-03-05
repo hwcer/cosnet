@@ -87,9 +87,9 @@ func (sock *Socket) Close(msg ...message.Message) {
 
 // OAuth 身份认证
 // re 是否断线重连
-func (sock *Socket) OAuth(v any, re bool, h ...func(*Socket)) {
+func (sock *Socket) OAuth(v any, re bool) {
 	switch d := v.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), "", d)
 	case values.Values:
 		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), "", d)
@@ -129,9 +129,9 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	return nil
 }
 
-func (sock *Socket) Send(path string, query map[string]string, data any) (err error) {
+func (sock *Socket) Send(path string, data any, query map[string]string) (err error) {
 	m := message.Require()
-	if err = m.Marshal(path, query, data); err != nil {
+	if err = m.Marshal(path, data, query); err != nil {
 		return
 	}
 	return sock.Write(m)
@@ -222,13 +222,9 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		return
 	}
 	c := &Context{Socket: socket, Message: msg}
-	var reply interface{}
-	reply, err = handler.Caller(node, c)
-	if err == nil {
-		err = handler.Serialize(c, reply)
-	}
-	if err != nil {
-		sock.Errorf(err)
+	reply := handler.Caller(node, c)
+	if msg.Confirm() && reply != nil {
+		err = c.Reply(reply)
 	}
 
 }

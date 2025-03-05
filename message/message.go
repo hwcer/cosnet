@@ -34,7 +34,7 @@ type message struct {
 
 // Path 路径
 func (m *message) Path() (r string, err error) {
-	if m.tags.Has(TagsUseUrlPath) {
+	if Options.Mode == HeadModePath {
 		r = string(m.bytes[0:int(m.code)])
 	} else {
 		r, err = Transform.Path(m.code)
@@ -44,7 +44,7 @@ func (m *message) Path() (r string, err error) {
 
 // Body 消息体
 func (m *message) Body() []byte {
-	if m.tags.Has(TagsUseUrlPath) {
+	if Options.Mode == HeadModePath {
 		return m.bytes[int(m.code):]
 	} else {
 		return m.bytes
@@ -111,19 +111,21 @@ func (m *message) Reset(b []byte) error {
 }
 
 // Marshal 将一个对象放入Message.data
-func (m *message) Marshal(path string, query map[string]string, body any) (err error) {
-	if err = m.Head.format(path, query); err != nil {
+func (m *message) Marshal(path string, body any, meta map[string]string) (err error) {
+	if err = m.Head.format(path, meta); err != nil {
 		return
 	}
 	buffer := bytes.NewBuffer(m.bytes[0:0])
-	if m.tags.Has(TagsUseUrlPath) {
+	if Options.Mode == HeadModePath {
 		buffer.WriteString(path)
 	}
 	switch v := body.(type) {
 	case []byte:
-		buffer.Write(v)
+		if len(v) > 0 {
+			buffer.Write(v)
+		}
 	default:
-		bi := m.Binder()
+		bi := binder.GetContentType(meta, binder.ContentTypeModReq)
 		err = bi.Encode(buffer, body)
 	}
 	if err != nil {
@@ -136,14 +138,11 @@ func (m *message) Marshal(path string, query map[string]string, body any) (err e
 
 // Unmarshal 解析Message body
 func (m *message) Unmarshal(i any) (err error) {
-	bi := m.Binder()
+	meta := m.Head.Query()
+	bi := binder.GetContentType(meta, binder.ContentTypeModRes)
 	return bi.Unmarshal(m.Body(), i)
 }
 
 func (m *message) Release() {
 	m.Head.Release()
-}
-
-func (m *message) Binder() binder.Binder {
-	return m.tags.Binder()
 }

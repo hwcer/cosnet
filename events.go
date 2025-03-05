@@ -2,6 +2,7 @@ package cosnet
 
 import (
 	"github.com/hwcer/cosgo/logger"
+	"github.com/hwcer/cosgo/values"
 )
 
 // EventType 事件类型
@@ -39,6 +40,6 @@ func Errorf(s *Socket, format any, args ...any) {
 			logger.Error(e)
 		}
 	}()
-	err := logger.Sprintf(format, args...)
+	err := values.Sprintf(format, args...)
 	Emit(EventTypeError, s, err)
 }
