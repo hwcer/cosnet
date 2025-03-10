@@ -223,7 +223,7 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 	}
 	c := &Context{Socket: socket, Message: msg}
 	reply := handler.Caller(node, c)
-	if msg.Confirm() && reply != nil {
+	if msg.Confirm() {
 		err = c.Reply(reply)
 	}
 

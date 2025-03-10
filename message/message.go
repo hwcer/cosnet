@@ -143,7 +143,7 @@ func (m *message) Marshal(path string, body any, meta map[string]string) (err er
 			buffer.Write(v)
 		}
 	default:
-		bi := binder.GetContentType(meta, binder.ContentTypeModReq)
+		bi := binder.GetContentType(meta, binder.ContentTypeModRes)
 		err = bi.Encode(buffer, body)
 	}
 	if err != nil {
