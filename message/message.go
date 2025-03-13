@@ -2,43 +2,23 @@ package message
 
 import (
 	"bytes"
-	"fmt"
-	"github.com/hwcer/cosgo/binder"
+	"errors"
 	"io"
-	"net/url"
 	"strings"
 )
-
-//const messageHeadSize = 5
-
-//const messagePathSize = 2 //Path len
-//const messageIndexSize = 4 //index len
-
-// message 默认使用路径模式集中注册协议
-
-// head  [MagicNumber,uint32(bytes)]
-// body : body数据字节数
-// bytes :  len(path) + path + body
-
-// path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
-
-// message 默认使用路径模式集中注册协议
-// path : path路径字节数
-// body : body数据字节数
-// bytes : path + body
-
-// path : /ping?t=1  URL路径模式，没有实际属性名，和body共同组成data
 
 type message struct {
 	Head
 	bytes []byte //数据
 }
 
-func (m *message) Path() (r string, err error) {
-	if Options.Mode == HeadModePath {
+func (m *message) Path() (r, q string, err error) {
+	magic := m.Magic()
+	if magic.Type == MagicTypePath {
 		r = string(m.bytes[0:int(m.code)])
 		if i := strings.Index(r, "?"); i >= 0 {
 			r = r[:i]
+			q = r[i+1:]
 		}
 	} else {
 		r, err = Transform.Path(m.code)
@@ -46,35 +26,14 @@ func (m *message) Path() (r string, err error) {
 	return
 }
 
-func (m *message) Query() map[string]string {
-	r := m.Head.Query()
-	if Options.Mode == HeadModePath {
-		path := string(m.bytes[0:int(m.code)])
-		if i := strings.Index(path, "?"); i >= 0 {
-			vs, _ := url.ParseQuery(path[i+1:])
-			for k, _ := range vs {
-				r[k] = vs.Get(k)
-			}
-		}
-	}
-	return r
-}
-
 // Body 消息体
 func (m *message) Body() []byte {
-	if Options.Mode == HeadModePath {
+	magic := m.Magic()
+	if magic.Type == MagicTypePath {
 		return m.bytes[int(m.code):]
 	} else {
 		return m.bytes
 	}
-}
-
-// Verify 校验包体是否正常
-func (m *message) Verify() error {
-	if l := len(m.bytes); l != int(m.size) {
-		return fmt.Errorf("message too short:%v", string(m.bytes))
-	}
-	return nil
 }
 
 // Bytes 生成二进制文件
@@ -129,12 +88,14 @@ func (m *message) Reset(b []byte) error {
 }
 
 // Marshal 将一个对象放入Message.data
-func (m *message) Marshal(path string, body any, meta map[string]string) (err error) {
-	if err = m.Head.format(path, meta); err != nil {
+func (m *message) Marshal(magic byte, index uint32, path string, body any) (err error) {
+	if err = m.Head.format(magic, index, path); err != nil {
 		return
 	}
+	mc := m.Magic()
 	buffer := bytes.NewBuffer(m.bytes[0:0])
-	if Options.Mode == HeadModePath {
+
+	if mc.Type == MagicTypePath {
 		buffer.WriteString(path)
 	}
 	switch v := body.(type) {
@@ -143,8 +104,12 @@ func (m *message) Marshal(path string, body any, meta map[string]string) (err er
 			buffer.Write(v)
 		}
 	default:
-		bi := binder.GetContentType(meta, binder.ContentTypeModRes)
-		err = bi.Encode(buffer, body)
+		bi := m.Binder()
+		if bi == nil {
+			err = errors.New("no binder found")
+		} else {
+			err = bi.Encode(buffer, body)
+		}
 	}
 	if err != nil {
 		return err
@@ -156,8 +121,10 @@ func (m *message) Marshal(path string, body any, meta map[string]string) (err er
 
 // Unmarshal 解析Message body
 func (m *message) Unmarshal(i any) (err error) {
-	meta := m.Head.Query()
-	bi := binder.GetContentType(meta, binder.ContentTypeModRes)
+	bi := m.Binder()
+	if bi == nil {
+		return errors.New("no binder found")
+	}
 	return bi.Unmarshal(m.Body(), i)
 }
 

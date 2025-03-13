@@ -29,12 +29,12 @@ func NewSocket(conn listener.Conn) *Socket {
 
 // Socket 基础网络连接
 type Socket struct {
-	id     uint64
-	conn   listener.Conn
-	data   *session.Data
-	stop   chan struct{}
-	cwrite chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
-	//status    Status
+	id        uint64
+	conn      listener.Conn
+	data      *session.Data
+	stop      chan struct{}
+	magic     byte                 //使用的魔法数字
+	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
 	closed    int32
 	heartbeat uint32
 }
@@ -128,10 +128,13 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	}
 	return nil
 }
-
-func (sock *Socket) Send(path string, data any, query map[string]string) (err error) {
+func (sock *Socket) Magic() byte {
+	return sock.magic
+}
+func (sock *Socket) Send(index uint32, path string, data any) (err error) {
 	m := message.Require()
-	if err = m.Marshal(path, data, query); err != nil {
+
+	if err = m.Marshal(sock.magic, index, path, data); err != nil {
 		return
 	}
 	return sock.Write(m)
@@ -166,6 +169,7 @@ func (sock *Socket) Write(m message.Message) (err error) {
 	if sock.closed > 0 {
 		return ErrSocketClosed
 	}
+
 	sock.cwrite <- m
 	return
 }
@@ -183,16 +187,17 @@ func (sock *Socket) readMsg(_ context.Context) {
 		}
 	}
 }
+
 func (sock *Socket) readMsgTrue(msg message.Message) bool {
 	if msg == nil {
 		return true
 	}
 	defer message.Release(msg)
-	if err := msg.Verify(); err != nil {
-		sock.Errorf(err)
-		return false
-	}
 	sock.KeepAlive()
+	if sock.magic == uint8(0) {
+		magic := msg.Magic()
+		sock.magic = magic.Key
+	}
 	sock.handle(sock, msg)
 	return true
 }
@@ -208,7 +213,7 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		}
 	}()
 	var path string
-	if path, err = msg.Path(); err != nil {
+	if path, _, err = msg.Path(); err != nil {
 		logger.Alert("Socket handle:%v", err)
 		return
 	}
@@ -226,7 +231,6 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 	if msg.Confirm() {
 		err = c.Reply(reply)
 	}
-
 }
 
 func (sock *Socket) writeMsg(ctx context.Context) {

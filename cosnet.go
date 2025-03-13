@@ -27,7 +27,7 @@ var started int32
 func Matcher(r io.Reader) bool {
 	buf := make([]byte, 1)
 	n, _ := r.Read(buf)
-	return n == 1 && (buf[0] == message.MagicNumber || buf[0] == message.MagicConfirm)
+	return n == 1 && message.Magics.Has(buf[0])
 }
 
 // Listen 监听address
