@@ -8,8 +8,7 @@ import (
 const messageHeadSize = 12
 
 const (
-	ModeConfirm  uint8 = 1
-	ModeCompress uint8 = 1 << 1
+	ModeConfirm uint8 = 1 //需要回复
 )
 
 type Head struct {
@@ -17,7 +16,7 @@ type Head struct {
 	mode  uint8  //1,需要回复
 	code  uint16 //2 协议码、PATH 长度
 	size  uint32 //4 BODY总长度(包含PATH)
-	index uint32 //4 client_id,server_id
+	index int32  //4 client_id,server_id
 }
 
 // Size 包体总长
@@ -25,7 +24,7 @@ func (h *Head) Size() uint32 {
 	return h.size
 }
 
-func (h *Head) Index() uint32 {
+func (h *Head) Index() int32 {
 	return h.index
 }
 func (h *Head) Magic() *Magic {
@@ -58,7 +57,7 @@ func (h *Head) Parse(head []byte) error {
 	h.mode = uint8(head[1])
 	h.code = magic.Binary.Uint16(head[2:4])
 	h.size = magic.Binary.Uint32(head[4:8])
-	h.index = magic.Binary.Uint32(head[8:12])
+	h.index = int32(magic.Binary.Uint32(head[8:12]))
 	if h.size > Options.MaxDataSize {
 		return ErrMsgDataSizeTooLong
 	}
@@ -71,11 +70,11 @@ func (h *Head) bytes() []byte {
 	head[1] = byte(h.mode)
 	magic.Binary.PutUint16(head[2:4], h.code)
 	magic.Binary.PutUint32(head[4:8], h.size)
-	magic.Binary.PutUint32(head[8:12], h.index)
+	magic.Binary.PutUint32(head[8:12], uint32(h.index))
 	return head
 }
 
-func (h *Head) format(magic byte, index uint32, path string) (err error) {
+func (h *Head) format(magic byte, index int32, path string) (err error) {
 	h.magic = magic
 	h.index = index
 

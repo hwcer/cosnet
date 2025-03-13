@@ -18,7 +18,8 @@ func (this *Context) Bind(i any) error {
 }
 
 func (this *Context) Send(path string, data any) error {
-	return this.Socket.Send(this.Message.Index(), path, data)
+	i := this.Message.Index()
+	return this.Socket.Send(i, path, data)
 }
 func (this *Context) Write(m message.Message) error {
 	return this.Socket.Write(m)
@@ -43,5 +44,5 @@ func (this *Context) Error(err any) {
 
 // Errorf 使用当前路径向客户端写入一个特定错误码的信息
 func (this *Context) Errorf(format any, args ...any) {
-	Errorf(this.Socket, args)
+	Errorf(this.Socket, format, args...)
 }

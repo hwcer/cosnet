@@ -24,16 +24,16 @@ var Options = struct {
 }
 
 type Message interface {
-	Size() uint32                                                  //包体长度
-	Path() (r string, q string, err error)                         //转发路径，数字类型的协议号需要转换成 /servicePath/servicesMethod
-	Index() uint32                                                 //自增
-	Magic() *Magic                                                 //获取魔法设定参数
-	Body() []byte                                                  //包头二进制
-	Reset([]byte) error                                            //使用完整二进制重置MESSAGE,websocket udp	模式
-	Parse(head []byte) error                                       //解析二进制包头
-	Bytes(w io.Writer, head bool) (n int, err error)               //转换成二进制并发送
-	Write(r io.Reader) (n int, err error)                          //从CONN中写入Size()字节
-	Marshal(magic byte, index uint32, path string, body any) error //使用对象填充包体
+	Size() uint32                                                 //包体长度
+	Path() (r string, q string, err error)                        //转发路径，数字类型的协议号需要转换成 /servicePath/servicesMethod
+	Index() int32                                                 //自增
+	Magic() *Magic                                                //获取魔法设定参数
+	Body() []byte                                                 //包头二进制
+	Reset([]byte) error                                           //使用完整二进制重置MESSAGE,websocket udp	模式
+	Parse(head []byte) error                                      //解析二进制包头
+	Bytes(w io.Writer, head bool) (n int, err error)              //转换成二进制并发送
+	Write(r io.Reader) (n int, err error)                         //从CONN中写入Size()字节
+	Marshal(magic byte, index int32, path string, body any) error //使用对象填充包体
 	Unmarshal(i any) (err error)
 	Release()
 	Confirm(v ...bool) bool //设置并返回是否需要返回消息，是否需要回复确认包

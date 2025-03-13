@@ -88,7 +88,7 @@ func (m *message) Reset(b []byte) error {
 }
 
 // Marshal 将一个对象放入Message.data
-func (m *message) Marshal(magic byte, index uint32, path string, body any) (err error) {
+func (m *message) Marshal(magic byte, index int32, path string, body any) (err error) {
 	if err = m.Head.format(magic, index, path); err != nil {
 		return
 	}
