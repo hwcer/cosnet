@@ -1,7 +1,6 @@
 package message
 
 import (
-	"encoding/binary"
 	"fmt"
 	"github.com/hwcer/cosgo/binder"
 )
@@ -15,7 +14,7 @@ const (
 
 type Head struct {
 	magic byte   //1
-	mode  uint8  //1需要回复
+	mode  uint8  //1,需要回复
 	code  uint16 //2 协议码、PATH 长度
 	size  uint32 //4 BODY总长度(包含PATH)
 	index uint32 //4 client_id,server_id
@@ -34,6 +33,7 @@ func (h *Head) Magic() *Magic {
 }
 
 // Confirm 是否需要回复
+// v 不为空时，先设置是否需要回复
 func (h *Head) Confirm(v ...bool) bool {
 	if len(v) > 0 {
 		if v[0] {
@@ -50,26 +50,28 @@ func (h *Head) Parse(head []byte) error {
 	if len(head) != messageHeadSize {
 		return ErrMsgHeadIllegal
 	}
-	if !Magics.Has(head[0]) {
+	magic := Magics.Get(head[0])
+	if magic == nil {
 		return ErrMsgHeadIllegal
 	}
 	h.magic = head[0]
 	h.mode = uint8(head[1])
-	h.code = binary.BigEndian.Uint16(head[2:4])
-	h.size = binary.BigEndian.Uint32(head[4:8])
-	h.index = binary.BigEndian.Uint32(head[8:12])
+	h.code = magic.Binary.Uint16(head[2:4])
+	h.size = magic.Binary.Uint32(head[4:8])
+	h.index = magic.Binary.Uint32(head[8:12])
 	if h.size > Options.MaxDataSize {
 		return ErrMsgDataSizeTooLong
 	}
 	return nil
 }
 func (h *Head) bytes() []byte {
+	magic := h.Magic()
 	head := make([]byte, messageHeadSize)
 	head[0] = h.magic
 	head[1] = byte(h.mode)
-	binary.BigEndian.PutUint16(head[2:4], h.code)
-	binary.BigEndian.PutUint32(head[4:8], h.size)
-	binary.BigEndian.PutUint32(head[8:12], h.index)
+	magic.Binary.PutUint16(head[2:4], h.code)
+	magic.Binary.PutUint32(head[4:8], h.size)
+	magic.Binary.PutUint32(head[8:12], h.index)
 	return head
 }
 
