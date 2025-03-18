@@ -35,12 +35,22 @@ type Socket struct {
 	stop      chan struct{}
 	magic     byte                 //使用的魔法数字
 	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
-	closed    int32
+	closed    int32                // 1--正在关闭(等待通道中的消息全部发送完毕)  2-已经关闭
 	heartbeat uint32
 }
 
+const (
+	SocketClosedNone    int32 = 0
+	SocketClosedClosing int32 = 1
+	SocketClosedClosed  int32 = 2
+)
+
 func (sock *Socket) disconnect() bool {
-	if !atomic.CompareAndSwapInt32(&sock.closed, 0, 1) {
+	v := sock.closed
+	if v == SocketClosedClosed {
+		return true
+	}
+	if !atomic.CompareAndSwapInt32(&sock.closed, v, SocketClosedClosed) {
 		return false
 	}
 	defer func() {
@@ -63,31 +73,16 @@ func (sock *Socket) Id() uint64 {
 func (sock *Socket) Data() *session.Data {
 	return sock.data
 }
-func (sock *Socket) Emit(e EventType) {
-	Emit(e, sock)
+func (sock *Socket) Emit(e EventType, args ...any) {
+	Emit(e, sock, args...)
 }
 
 // Close 强制关闭,无法重连
-// todo 状态控制等待发送完再关闭
-func (sock *Socket) Close(msg ...message.Message) {
-	if sock.closed > 0 {
-		return
-	}
-	defer func() {
-		_ = recover()
-	}()
-	for _, m := range msg {
-		_ = sock.Write(m)
-	}
-	if len(msg) > 0 {
-		sock.KeepAlive()
-	}
-	sock.disconnect()
+func (sock *Socket) Close() {
+	atomic.CompareAndSwapInt32(&sock.closed, SocketClosedNone, SocketClosedClosing)
 }
 
-// OAuth 身份认证
-// re 是否断线重连
-func (sock *Socket) OAuth(v any, re bool) {
+func (sock *Socket) setData(v any) {
 	switch d := v.(type) {
 	case map[string]any:
 		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), "", d)
@@ -99,12 +94,24 @@ func (sock *Socket) OAuth(v any, re bool) {
 		logger.Error("unknown OAuth arg type:%v", v)
 		return
 	}
-	if re {
-		sock.Emit(EventTypeReconnected)
-	} else {
-		sock.Emit(EventTypeAuthentication)
-	}
+}
 
+// OAuth 身份认证
+func (sock *Socket) OAuth(v any) {
+	sock.setData(v)
+	sock.Emit(EventTypeAuthentication)
+}
+
+// Replaced 被顶号
+func (sock *Socket) Replaced(ip string) {
+	sock.Emit(EventTypeReplaced, ip)
+	sock.Close()
+}
+
+// Reconnect 断线重连,对于SOCKET而言本质上还是登陆，仅仅是事件不同，方便业务逻辑层面区分
+func (sock *Socket) Reconnect(v any) {
+	sock.setData(v)
+	sock.Emit(EventTypeReconnected)
 }
 
 func (sock *Socket) Errorf(format any, args ...any) {
@@ -133,7 +140,6 @@ func (sock *Socket) Magic() byte {
 }
 func (sock *Socket) Send(index int32, path string, data any) (err error) {
 	m := message.Require()
-
 	if err = m.Marshal(sock.magic, index, path, data); err != nil {
 		return
 	}
@@ -169,7 +175,6 @@ func (sock *Socket) Write(m message.Message) (err error) {
 	if sock.closed > 0 {
 		return ErrSocketClosed
 	}
-
 	sock.cwrite <- m
 	return
 }
@@ -243,6 +248,16 @@ func (sock *Socket) writeMsg(ctx context.Context) {
 			return
 		case msg := <-sock.cwrite:
 			sock.writeMsgTrue(msg)
+			//继续读取数据
+			for i := 0; i < len(sock.cwrite); i++ {
+				if msg = <-sock.cwrite; msg != nil {
+					sock.writeMsgTrue(msg)
+				}
+			}
+			//如果已经准备关闭，就退出循环
+			if sock.closed == SocketClosedClosing {
+				return
+			}
 		}
 	}
 }

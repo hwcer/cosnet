@@ -15,6 +15,7 @@ const (
 	EventTypeReconnected                         //断线重连
 	EventTypeAuthentication                      //身份认证
 	EventTypeDisconnect                          //断开连接
+	EventTypeReplaced                            //被顶号
 )
 
 type EventsFunc func(*Socket, any)
