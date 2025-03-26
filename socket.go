@@ -199,7 +199,7 @@ func (sock *Socket) readMsgTrue(msg message.Message) bool {
 	}
 	defer message.Release(msg)
 	sock.KeepAlive()
-	if sock.magic == uint8(0) {
+	if sock.magic == 0 {
 		magic := msg.Magic()
 		sock.magic = magic.Key
 	}
@@ -232,10 +232,12 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		return
 	}
 	c := &Context{Socket: socket, Message: msg}
-	reply := handler.Caller(node, c)
-	if msg.Confirm() {
-		err = c.Reply(reply)
+	if err = handler.Caller(node, c); err != nil {
+		socket.Errorf(err)
 	}
+	//if msg.Confirm() {
+	//	err = c.Reply(reply)
+	//}
 }
 
 func (sock *Socket) writeMsg(ctx context.Context) {

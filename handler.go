@@ -7,16 +7,17 @@ import (
 )
 
 type handleCaller interface {
-	Caller(node *registry.Node, c *Context) any
+	Caller(node *registry.Node, c *Context) error
 }
 type HandlerFilter func(node *registry.Node) bool
-type HandlerCaller func(node *registry.Node, c *Context) any
-type HandlerSerialize func(c *Context, reply any) any
+type HandlerCaller func(node *registry.Node, c *Context) error
+
+//type HandlerSerialize func(c *Context, reply any) any
 
 type Handler struct {
-	filter    HandlerFilter
-	caller    HandlerCaller
-	serialize HandlerSerialize
+	filter HandlerFilter
+	caller HandlerCaller
+	//serialize HandlerSerialize
 }
 
 func (this *Handler) Use(src any) {
@@ -26,9 +27,9 @@ func (this *Handler) Use(src any) {
 	if v, ok := src.(HandlerCaller); ok {
 		this.caller = v
 	}
-	if v, ok := src.(HandlerSerialize); ok {
-		this.serialize = v
-	}
+	//if v, ok := src.(HandlerSerialize); ok {
+	//	this.serialize = v
+	//}
 }
 
 func (this *Handler) Filter(node *registry.Node) bool {
@@ -36,7 +37,7 @@ func (this *Handler) Filter(node *registry.Node) bool {
 		return this.filter(node)
 	}
 	if node.IsFunc() {
-		_, ok := node.Method().(func(*Context) any)
+		_, ok := node.Method().(func(*Context) error)
 		return ok
 	} else if node.IsMethod() {
 		t := node.Value().Type()
@@ -53,21 +54,21 @@ func (this *Handler) Filter(node *registry.Node) bool {
 	}
 }
 
-func (this *Handler) Caller(node *registry.Node, c *Context) (reply any) {
+func (this *Handler) Caller(node *registry.Node, c *Context) (err error) {
 	if this.caller != nil {
 		return this.caller(node, c)
 	}
 	if node.IsFunc() {
-		f := node.Method().(func(*Context) interface{})
-		reply = f(c)
+		f := node.Method().(func(*Context) error)
+		err = f(c)
 	} else if s, ok := node.Binder().(handleCaller); ok {
-		reply = s.Caller(node, c)
+		err = s.Caller(node, c)
 	} else {
 		r := node.Call(c)
-		reply = r[0].Interface()
+		err = r[0].Interface().(error)
 	}
-	if this.serialize != nil {
-		reply = this.serialize(c, reply)
-	}
+	//if this.serialize != nil {
+	//	err = this.serialize(c, reply)
+	//}
 	return
 }

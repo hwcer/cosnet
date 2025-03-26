@@ -6,11 +6,18 @@ import (
 	"time"
 )
 
+func stop() {
+	for _, l := range instance {
+		_ = l.Close()
+	}
+}
+
 // heartbeat 启动协程定时清理无效用户
 func heartbeat(ctx context.Context) {
 	t := time.Millisecond * time.Duration(Options.SocketHeartbeat)
 	ticker := time.NewTimer(t)
 	defer ticker.Stop()
+	defer stop()
 	for {
 		select {
 		case <-ctx.Done():

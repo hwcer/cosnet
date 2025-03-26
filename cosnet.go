@@ -64,16 +64,9 @@ func Accept(ln listener.Listener) {
 func Start() bool {
 	if atomic.CompareAndSwapInt32(&started, 0, 1) {
 		scc.CGO(heartbeat)
-		scc.Trigger(stop)
 		return true
 	}
 	return false
-}
-
-func stop() {
-	for _, l := range instance {
-		_ = l.Close()
-	}
 }
 
 func acceptListener(ln listener.Listener) {
