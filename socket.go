@@ -85,9 +85,9 @@ func (sock *Socket) Close() {
 func (sock *Socket) setData(v any) {
 	switch d := v.(type) {
 	case map[string]any:
-		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), "", d)
+		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), d)
 	case values.Values:
-		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), "", d)
+		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), d)
 	case *session.Data:
 		sock.data = d
 	default:
