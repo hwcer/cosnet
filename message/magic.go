@@ -3,7 +3,7 @@ package message
 import (
 	"encoding/binary"
 	"github.com/hwcer/cosgo/binder"
-	"github.com/hwcer/cosgo/logger"
+	"github.com/hwcer/logger"
 )
 
 const (
