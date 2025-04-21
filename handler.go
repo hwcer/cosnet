@@ -12,12 +12,9 @@ type handleCaller interface {
 type HandlerFilter func(node *registry.Node) bool
 type HandlerCaller func(node *registry.Node, c *Context) error
 
-//type HandlerSerialize func(c *Context, reply any) any
-
 type Handler struct {
 	filter HandlerFilter
 	caller HandlerCaller
-	//serialize HandlerSerialize
 }
 
 func (this *Handler) Use(src any) {
@@ -27,9 +24,6 @@ func (this *Handler) Use(src any) {
 	if v, ok := src.(HandlerCaller); ok {
 		this.caller = v
 	}
-	//if v, ok := src.(HandlerSerialize); ok {
-	//	this.serialize = v
-	//}
 }
 
 func (this *Handler) Filter(node *registry.Node) bool {
@@ -67,8 +61,5 @@ func (this *Handler) Caller(node *registry.Node, c *Context) (err error) {
 		r := node.Call(c)
 		err = r[0].Interface().(error)
 	}
-	//if this.serialize != nil {
-	//	err = this.serialize(c, reply)
-	//}
 	return
 }
