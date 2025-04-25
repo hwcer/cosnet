@@ -105,6 +105,7 @@ func (sock *Socket) OAuth(v any) {
 // Replaced 被顶号
 func (sock *Socket) Replaced(ip string) {
 	sock.Emit(EventTypeReplaced, ip)
+	sock.data = nil //取消与角色关联，避免触发角色的掉线事件
 	sock.Close()
 }
 
