@@ -35,22 +35,22 @@ type Socket struct {
 	stop      chan struct{}
 	magic     byte                 //使用的魔法数字
 	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
-	closed    int32                // 1--正在关闭(等待通道中的消息全部发送完毕)  2-已经关闭
-	heartbeat uint32
+	status    int32                // 1--正在关闭(等待通道中的消息全部发送完毕)  2-已经关闭
+	heartbeat int32
 }
 
 const (
-	SocketClosedNone    int32 = 0
-	SocketClosedClosing int32 = 1
-	SocketClosedClosed  int32 = 2
+	SocketStatusNone    int32 = 0
+	SocketStatusClosing int32 = 1
+	SocketStatusClosed  int32 = 2
 )
 
 func (sock *Socket) disconnect() bool {
-	v := sock.closed
-	if v == SocketClosedClosed {
+	v := sock.status
+	if v == SocketStatusClosed {
 		return true
 	}
-	if !atomic.CompareAndSwapInt32(&sock.closed, v, SocketClosedClosed) {
+	if !atomic.CompareAndSwapInt32(&sock.status, v, SocketStatusClosed) {
 		return false
 	}
 	defer func() {
@@ -78,8 +78,15 @@ func (sock *Socket) Emit(e EventType, args ...any) {
 }
 
 // Close 强制关闭,无法重连
-func (sock *Socket) Close() {
-	atomic.CompareAndSwapInt32(&sock.closed, SocketClosedNone, SocketClosedClosing)
+// delay 延时关闭，单位毫秒
+func (sock *Socket) Close(delay ...int32) {
+	if !atomic.CompareAndSwapInt32(&sock.status, SocketStatusNone, SocketStatusClosing) {
+		return
+	}
+	sock.heartbeat = Options.SocketConnectTime
+	if len(delay) > 0 {
+		sock.heartbeat -= delay[0]
+	}
 }
 
 func (sock *Socket) setData(v any) {
@@ -106,7 +113,7 @@ func (sock *Socket) OAuth(v any) {
 func (sock *Socket) Replaced(ip string) {
 	sock.Emit(EventTypeReplaced, ip)
 	sock.data = nil //取消与角色关联，避免触发角色的掉线事件
-	sock.Close()
+	sock.Close(Options.SocketReplacedTime)
 }
 
 // Reconnect 断线重连,对于SOCKET而言本质上还是登陆，仅仅是事件不同，方便业务逻辑层面区分
@@ -121,7 +128,9 @@ func (sock *Socket) Errorf(format any, args ...any) {
 
 // KeepAlive 任何行为都清空heartbeat
 func (sock *Socket) KeepAlive() {
-	sock.heartbeat = 0
+	if sock.status == SocketStatusNone {
+		sock.heartbeat = 0
+	}
 }
 
 func (sock *Socket) LocalAddr() net.Addr {
@@ -139,6 +148,7 @@ func (sock *Socket) RemoteAddr() net.Addr {
 func (sock *Socket) Magic() byte {
 	return sock.magic
 }
+
 func (sock *Socket) Send(index int32, path string, data any) (err error) {
 	m := message.Require()
 	if err = m.Marshal(sock.magic, index, path, data); err != nil {
@@ -154,7 +164,7 @@ func (sock *Socket) Async(m message.Message) (s chan struct{}, err error) {
 			err = fmt.Errorf("%v", e)
 		}
 	}()
-	if sock.closed > 0 {
+	if !sock.Alive() {
 		return s, ErrSocketClosed
 	}
 	s = make(chan struct{})
@@ -173,11 +183,15 @@ func (sock *Socket) Write(m message.Message) (err error) {
 			err = fmt.Errorf("%v", e)
 		}
 	}()
-	if sock.closed > 0 {
+	if !sock.Alive() {
 		return ErrSocketClosed
 	}
 	sock.cwrite <- m
 	return
+}
+
+func (sock *Socket) Alive() bool {
+	return sock.status == SocketStatusNone && sock.conn != nil
 }
 
 func (sock *Socket) readMsg(_ context.Context) {
@@ -209,15 +223,12 @@ func (sock *Socket) readMsgTrue(msg message.Message) bool {
 }
 
 func (sock *Socket) handle(socket *Socket, msg message.Message) {
-	var err error
 	defer func() {
 		if e := recover(); e != nil {
-			err = fmt.Errorf("server handle error:%v\n%v", e, string(debug.Stack()))
-		}
-		if err != nil {
-			Errorf(socket, err)
+			socket.Errorf("server handle error:%v\n%v", e, string(debug.Stack()))
 		}
 	}()
+	var err error
 	var path string
 	if path, _, err = msg.Path(); err != nil {
 		logger.Alert("Socket handle:%v", err)
@@ -236,9 +247,6 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 	if err = handler.Caller(node, c); err != nil {
 		socket.Errorf(err)
 	}
-	//if msg.Confirm() {
-	//	err = c.Reply(reply)
-	//}
 }
 
 func (sock *Socket) writeMsg(ctx context.Context) {
@@ -251,29 +259,19 @@ func (sock *Socket) writeMsg(ctx context.Context) {
 			return
 		case msg := <-sock.cwrite:
 			sock.writeMsgTrue(msg)
-			//继续读取数据
-			for i := 0; i < len(sock.cwrite); i++ {
-				if msg = <-sock.cwrite; msg != nil {
-					sock.writeMsgTrue(msg)
-				}
-			}
-			//如果已经准备关闭，就退出循环
-			if sock.closed == SocketClosedClosing {
-				return
-			}
 		}
 	}
 }
 
 func (sock *Socket) writeMsgTrue(msg message.Message) {
-	var err error
 	defer func() {
+		sock.KeepAlive()
 		message.Release(msg)
-		if err != nil {
-			sock.Errorf(err)
-		} else {
-			sock.KeepAlive()
+		if e := recover(); e != nil {
+			sock.Errorf(e)
 		}
 	}()
-	err = sock.conn.WriteMessage(msg)
+	if err := sock.conn.WriteMessage(msg); err != nil {
+		sock.Errorf(err)
+	}
 }

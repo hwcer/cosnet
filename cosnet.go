@@ -105,7 +105,7 @@ func tryConnect(s string) (listener.Conn, error) {
 		address.Scheme = "tcp"
 	}
 	rs := address.String()
-	for try := uint16(0); try < Options.ClientReconnectMax; try++ {
+	for try := int32(0); try < Options.ClientReconnectMax; try++ {
 		conn, err := net.DialTimeout(address.Scheme, rs, time.Second)
 		if err == nil {
 			return tcp.NewConn(conn), nil

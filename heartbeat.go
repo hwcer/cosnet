@@ -40,5 +40,7 @@ func doHeartbeat(ctx context.Context) {
 func (sock *Socket) doHeartbeat() {
 	if Options.SocketConnectTime > 0 && sock.heartbeat > Options.SocketConnectTime {
 		sock.disconnect()
+	} else {
+		sock.heartbeat += Options.SocketHeartbeat
 	}
 }
