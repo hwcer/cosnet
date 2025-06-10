@@ -5,15 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hwcer/cosgo/scc"
-	"github.com/hwcer/cosgo/session"
-	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/logger"
 	"io"
 	"net"
 	"runtime/debug"
-	"strconv"
 	"sync/atomic"
 )
 
@@ -31,8 +28,8 @@ func NewSocket(conn listener.Conn) *Socket {
 type Socket struct {
 	id        uint64
 	conn      listener.Conn
-	data      *session.Data
-	stop      chan struct{}
+	data      any                  //登录后绑定的用户ID
+	stop      chan struct{}        //关闭标记
 	magic     byte                 //使用的魔法数字
 	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
 	status    int32                // 1--正在关闭(等待通道中的消息全部发送完毕)  2-已经关闭
@@ -61,7 +58,7 @@ func (sock *Socket) disconnect() bool {
 	close(sock.stop)
 	_ = sock.conn.Close()
 	sock.Emit(EventTypeDisconnect)
-	sockets.Delete(sock.Id())
+	sockets.Delete(sock.id)
 	sock.data = nil
 	return true
 }
@@ -69,10 +66,10 @@ func (sock *Socket) disconnect() bool {
 func (sock *Socket) Id() uint64 {
 	return sock.id
 }
-
-func (sock *Socket) Data() *session.Data {
+func (sock *Socket) Data() any {
 	return sock.data
 }
+
 func (sock *Socket) Emit(e EventType, args ...any) {
 	Emit(e, sock, args...)
 }
@@ -89,23 +86,9 @@ func (sock *Socket) Close(delay ...int32) {
 	}
 }
 
-func (sock *Socket) setData(v any) {
-	switch d := v.(type) {
-	case map[string]any:
-		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), d)
-	case values.Values:
-		sock.data = session.NewData(strconv.FormatUint(sock.id, 10), d)
-	case *session.Data:
-		sock.data = d
-	default:
-		logger.Error("unknown OAuth arg type:%v", v)
-		return
-	}
-}
-
 // OAuth 身份认证
 func (sock *Socket) OAuth(v any) {
-	sock.setData(v)
+	sock.data = v
 	sock.Emit(EventTypeAuthentication)
 }
 
@@ -118,7 +101,7 @@ func (sock *Socket) Replaced(ip string) {
 
 // Reconnect 断线重连,对于SOCKET而言本质上还是登陆，仅仅是事件不同，方便业务逻辑层面区分
 func (sock *Socket) Reconnect(v any) {
-	sock.setData(v)
+	sock.data = v
 	sock.Emit(EventTypeReconnected)
 }
 
