@@ -75,7 +75,7 @@ func (sock *Socket) Emit(e EventType, args ...any) {
 }
 
 // Close 强制关闭,无法重连
-// delay 延时关闭，单位毫秒
+// delay 延时关闭，单位秒
 func (sock *Socket) Close(delay ...int32) {
 	if !atomic.CompareAndSwapInt32(&sock.status, SocketStatusNone, SocketStatusClosing) {
 		return
@@ -175,6 +175,11 @@ func (sock *Socket) Write(m message.Message) (err error) {
 
 func (sock *Socket) Alive() bool {
 	return sock.status == SocketStatusNone && sock.conn != nil
+}
+
+func (sock *Socket) Heartbeat(v int32) int32 {
+	sock.heartbeat += v
+	return sock.heartbeat
 }
 
 func (sock *Socket) readMsg(_ context.Context) {
