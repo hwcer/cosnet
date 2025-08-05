@@ -5,8 +5,8 @@ go 1.23.0
 toolchain go1.23.4
 
 require (
-	github.com/hwcer/cosgo v1.4.0
-	github.com/hwcer/logger v0.1.0
+	github.com/hwcer/cosgo v0.0.0-20250805074455-fca4a0a2aa10
+	github.com/hwcer/logger v0.0.0-20250804090620-c5ed3d300dab
 	golang.org/x/sync v0.16.0
 )
 
