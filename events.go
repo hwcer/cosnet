@@ -41,6 +41,11 @@ func Errorf(s *Socket, format any, args ...any) {
 			logger.Error(e)
 		}
 	}()
-	err := values.Sprintf(format, args...)
+	var err any
+	if len(args) > 0 {
+		err = values.Sprintf(format, args...)
+	} else {
+		err = format
+	}
 	Emit(EventTypeError, s, err)
 }
