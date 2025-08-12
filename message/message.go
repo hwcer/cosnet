@@ -15,6 +15,10 @@ type message struct {
 func (m *message) Path() (r, q string, err error) {
 	magic := m.Magic()
 	if magic.Type == MagicTypePath {
+		if int(m.code) > len(m.bytes) {
+			err = ErrMsgHeadIllegal
+			return
+		}
 		r = string(m.bytes[0:int(m.code)])
 		if i := strings.Index(r, "?"); i >= 0 {
 			r = r[:i]
