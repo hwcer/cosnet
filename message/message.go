@@ -9,23 +9,32 @@ import (
 
 type message struct {
 	Head
-	bytes []byte //数据
+	code  int32
+	bytes []byte //数据   uint32 (path) body
 }
 
+func (m *message) Code() int32 {
+	if m.code == 0 {
+		magic := m.Magic()
+		m.code = int32(magic.Binary.Uint32(m.bytes[0:4]))
+	}
+	return m.code
+}
 func (m *message) Path() (r, q string, err error) {
 	magic := m.Magic()
+	code := m.Code()
 	if magic.Type == MagicTypePath {
-		if int(m.code) > len(m.bytes) {
+		if int(code) > len(m.bytes) {
 			err = ErrMsgHeadIllegal
 			return
 		}
-		r = string(m.bytes[0:int(m.code)])
+		r = string(m.bytes[4 : int(code)+4])
 		if i := strings.Index(r, "?"); i >= 0 {
 			r = r[:i]
 			q = r[i+1:]
 		}
 	} else {
-		r, err = Transform.Path(m.code)
+		r, err = Transform.Path(code)
 	}
 	return
 }
@@ -33,11 +42,11 @@ func (m *message) Path() (r, q string, err error) {
 // Body 消息体
 func (m *message) Body() []byte {
 	magic := m.Magic()
+	i := int(4)
 	if magic.Type == MagicTypePath {
-		return m.bytes[int(m.code):]
-	} else {
-		return m.bytes
+		i += int(m.Code())
 	}
+	return m.bytes[i:]
 }
 
 // Bytes 生成二进制文件
@@ -92,16 +101,31 @@ func (m *message) Reset(b []byte) error {
 }
 
 // Marshal 将一个对象放入Message.data
-func (m *message) Marshal(magic byte, index int32, path string, body any) (err error) {
-	if err = m.Head.format(magic, index, path); err != nil {
+func (m *message) Marshal(magic byte, index uint32, path string, body any) (err error) {
+	if err = m.Head.format(magic, index); err != nil {
 		return
 	}
 	mc := m.Magic()
-	buffer := bytes.NewBuffer(m.bytes[0:0])
-
-	if mc.Type == MagicTypePath {
-		buffer.WriteString(path)
+	if len(m.bytes) < 4 {
+		m.bytes = make([]byte, 4, Options.Capacity)
 	}
+
+	var buffer *bytes.Buffer
+	if mc.Type == MagicTypePath {
+		mc.Binary.PutUint32(m.bytes[0:4], uint32(len(path)))
+		buffer = bytes.NewBuffer(m.bytes[0:4])
+		buffer.WriteString(path)
+	} else {
+		var code int32
+		if code, err = Transform.Code(path); err == nil {
+			return err
+		}
+		mc.Binary.PutUint32(m.bytes[0:4], uint32(code))
+		buffer = bytes.NewBuffer(m.bytes[0:4])
+	}
+
+	//buffer := bytes.NewBuffer(m.bytes[0:0])
+
 	switch v := body.(type) {
 	case []byte:
 		if len(v) > 0 {
@@ -132,6 +156,12 @@ func (m *message) Unmarshal(i any) (err error) {
 	return bi.Unmarshal(m.Body(), i)
 }
 
+func (m *message) Confirm() bool {
+	magic := m.Magic()
+	return magic.Confirm
+}
+
 func (m *message) Release() {
 	m.Head.Release()
+	m.code = 0
 }

@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/hwcer/cosgo/scc"
-	"github.com/hwcer/cosnet/listener"
-	"github.com/hwcer/cosnet/message"
-	"github.com/hwcer/logger"
 	"io"
 	"net"
 	"runtime/debug"
 	"sync/atomic"
+
+	"github.com/hwcer/cosgo/scc"
+	"github.com/hwcer/cosnet/listener"
+	"github.com/hwcer/cosnet/message"
+	"github.com/hwcer/logger"
 )
 
 func NewSocket(conn listener.Conn) *Socket {
@@ -132,7 +133,7 @@ func (sock *Socket) Magic() byte {
 	return sock.magic
 }
 
-func (sock *Socket) Send(index int32, path string, data any) (err error) {
+func (sock *Socket) Send(index uint32, path string, data any) (err error) {
 	m := message.Require()
 	if err = m.Marshal(sock.magic, index, path, data); err != nil {
 		return

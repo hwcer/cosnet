@@ -1,13 +1,11 @@
 module github.com/hwcer/cosnet
 
-go 1.23.0
-
-toolchain go1.23.4
+go 1.24.0
 
 require (
-	github.com/hwcer/cosgo v0.0.0-20250805074455-fca4a0a2aa10
-	github.com/hwcer/logger v0.0.0-20250804090620-c5ed3d300dab
-	golang.org/x/sync v0.16.0
+	github.com/hwcer/cosgo v1.5.4
+	github.com/hwcer/logger v0.2.1
+	golang.org/x/sync v0.17.0
 )
 
 require (
@@ -21,9 +19,9 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.mongodb.org/mongo-driver v1.17.4 // indirect
-	golang.org/x/crypto v0.40.0 // indirect
-	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792 // indirect
-	golang.org/x/text v0.27.0 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
+	golang.org/x/text v0.29.0 // indirect
+	google.golang.org/protobuf v1.36.9 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
