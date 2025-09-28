@@ -220,16 +220,17 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 	var err error
 	var path string
 	if path, _, err = msg.Path(); err != nil {
-		logger.Alert("Socket handle:%v", err)
+		socket.Errorf("message path error code:%d error:%v", msg.Code(), err)
 		return
 	}
 	node, ok := Registry.Match(path)
 	if !ok {
-		Emit(EventTypeMessage, socket, msg)
+		socket.Emit(EventTypeMessage, msg)
 		return
 	}
 	handler := node.Service.Handler.(*Handler)
 	if handler == nil {
+		socket.Errorf("no handler for %s", path)
 		return
 	}
 	c := &Context{Socket: socket, Message: msg}

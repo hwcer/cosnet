@@ -124,8 +124,6 @@ func (m *message) Marshal(magic byte, index uint32, path string, body any) (err 
 		buffer = bytes.NewBuffer(m.bytes[0:4])
 	}
 
-	//buffer := bytes.NewBuffer(m.bytes[0:0])
-
 	switch v := body.(type) {
 	case []byte:
 		if len(v) > 0 {

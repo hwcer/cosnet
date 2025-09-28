@@ -4,25 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"strings"
+	"time"
+
+	"github.com/hwcer/cosgo"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/utils"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/cosnet/tcp"
 	"github.com/hwcer/logger"
-	"io"
-	"net"
-	"strings"
-	"sync/atomic"
-	"time"
 )
 
-var started int32
+var lns []listener.Listener
 
-//func Matcher() cmux.Matcher {
-//	magic := message.Options.MagicNumber
-//	return
-//}
+func init() {
+	cosgo.On(cosgo.EventTypStarted, onStart)
+	cosgo.On(cosgo.EventTypClosing, onClose)
+}
 
 func Matcher(r io.Reader) bool {
 	buf := make([]byte, 1)
@@ -58,17 +59,22 @@ func Accept(ln listener.Listener) {
 	scc.CGO(func(ctx context.Context) {
 		acceptListener(ln)
 	})
-	Start()
 }
 
-func Start() bool {
-	if atomic.CompareAndSwapInt32(&started, 0, 1) {
-		scc.CGO(heartbeat)
-		return true
+func onStart() error {
+	scc.CGO(heartbeat)
+	return nil
+}
+
+func onClose() error {
+	for _, ln := range lns {
+		_ = ln.Close()
 	}
-	return false
+	return nil
 }
 
+// 启动服务器应该在初始化时的主进程中完成
+// 不应该是在并发的协程中完成
 func acceptListener(ln listener.Listener) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -78,13 +84,15 @@ func acceptListener(ln listener.Listener) {
 	defer func() {
 		_ = ln.Close()
 	}()
+	lns = append(lns, ln)
 	for !scc.Stopped() {
 		conn, err := ln.Accept()
 		if err == nil {
 			_, err = New(conn)
-		}
-		if err != nil && !errors.Is(err, net.ErrClosed) && !scc.Stopped() {
-			logger.Error("tcp listener.Accept Error:%v", err)
+		} else if errors.Is(err, net.ErrClosed) {
+			return
+		} else {
+			logger.Alert("listener.Accept Error:%v", err)
 		}
 	}
 }
@@ -95,7 +103,6 @@ func Connect(address string) (socket *Socket, err error) {
 	if err != nil {
 		return nil, err
 	}
-	Start()
 	return New(conn)
 }
 

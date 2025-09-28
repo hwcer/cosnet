@@ -27,7 +27,7 @@ func (this *Context) Write(m message.Message) error {
 
 // Reply 使用当前路径回复
 func (this *Context) Reply(v any) (err error) {
-	p := S2CConfirm
+	p := Options.S2CConfirm
 	if p == "" {
 		p, _, err = this.Message.Path()
 	}
