@@ -133,7 +133,7 @@ func (sock *Socket) Magic() byte {
 	return sock.magic
 }
 
-func (sock *Socket) Send(index uint32, path string, data any) (err error) {
+func (sock *Socket) Send(index int32, path string, data any) (err error) {
 	m := message.Require()
 	if err = m.Marshal(sock.magic, index, path, data); err != nil {
 		return
