@@ -27,7 +27,11 @@ func (this *Context) Write(m message.Message) error {
 
 // Reply 使用当前路径回复
 func (this *Context) Reply(v any) (err error) {
-	p := Options.S2CConfirm
+	var p string
+	//如果包序号为0时原路返回
+	if this.Message.Index() > 0 {
+		p = Options.S2CConfirm
+	}
 	if p == "" {
 		p, _, err = this.Message.Path()
 	}
