@@ -21,7 +21,7 @@ var (
 func init() {
 	sockets = syncmap.Map{}
 	emitter = make(map[EventType][]EventsFunc)
-	Registry = registry.New(nil)
+	Registry = registry.New()
 }
 
 // New 创建新socket并自动加入到Sockets管理器
