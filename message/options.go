@@ -3,6 +3,8 @@ package message
 import (
 	"errors"
 	"io"
+
+	"github.com/hwcer/cosgo/binder"
 )
 
 var ErrMsgHeadIllegal = errors.New("message head illegal")
@@ -34,6 +36,7 @@ type Message interface {
 	Parse(head []byte) error                                      //解析二进制包头
 	Bytes(w io.Writer, head bool) (n int, err error)              //转换成二进制并发送
 	Write(r io.Reader) (n int, err error)                         //从CONN中写入Size()字节
+	Binder() binder.Binder                                        //当前协议使用的系列化方式
 	Marshal(magic byte, index int32, path string, body any) error //使用对象填充包体
 	Unmarshal(i any) (err error)
 	Release()
