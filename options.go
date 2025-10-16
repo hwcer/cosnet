@@ -1,5 +1,7 @@
 package cosnet
 
+const RegistryMethod = "TCP"
+
 var Options = struct {
 	//AuthenticationTime  uint16 //(S)连接后等待登录的时间，默认 0：不需要登录
 	//ReWriteTime         int32  //(S)写消息失败时，重试间隔时间

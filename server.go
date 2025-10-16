@@ -2,6 +2,7 @@ package cosnet
 
 import (
 	"errors"
+
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosnet/listener"
@@ -59,15 +60,12 @@ func Range(fn func(socket *Socket) bool) {
 	})
 }
 
-func Service(name string, handler ...interface{}) *registry.Service {
-	service := Registry.Service(name)
-	if service.Handler == nil {
-		service.Handler = &Handler{}
-	}
-	if h, ok := service.Handler.(*Handler); ok {
-		for _, i := range handler {
-			h.Use(i)
-		}
+func Service(name string, handlers ...any) *registry.Service {
+	handler := &Handler{}
+	service := Registry.Service(name, handler)
+	service.SetMethods([]string{RegistryMethod})
+	for _, i := range handlers {
+		handler.Use(i)
 	}
 	return service
 }

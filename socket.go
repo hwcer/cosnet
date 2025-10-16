@@ -228,7 +228,7 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		socket.Emit(EventTypeMessage, msg)
 		return
 	}
-	handler := node.Service.Handler.(*Handler)
+	handler := node.Handler().(*Handler)
 	if handler == nil {
 		socket.Errorf("no handler for %s", path)
 		return
