@@ -60,13 +60,14 @@ func Range(fn func(socket *Socket) bool) {
 	})
 }
 
-func Service(name string, handlers ...any) *registry.Service {
+func Service(name ...string) *registry.Service {
 	handler := &Handler{}
-	service := Registry.Service(name, handler)
-	service.SetMethods([]string{RegistryMethod})
-	for _, i := range handlers {
-		handler.Use(i)
+	var s string
+	if len(name) > 0 {
+		s = name[0]
 	}
+	service := Registry.Service(s, handler)
+	service.SetMethods([]string{RegistryMethod})
 	return service
 }
 
@@ -80,7 +81,7 @@ func Register(i interface{}, prefix ...string) error {
 func Broadcast(m message.Message, filter func(*Socket) bool) {
 	Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
-			_, _ = sock.Async(m)
+			_ = sock.Async(m)
 		}
 		return true
 	})

@@ -2,8 +2,9 @@ package cosnet
 
 import (
 	"context"
-	"github.com/hwcer/logger"
 	"time"
+
+	"github.com/hwcer/logger"
 )
 
 func stop() {

@@ -3,13 +3,13 @@ package cosnet
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"runtime/debug"
 	"sync/atomic"
 
 	"github.com/hwcer/cosgo/scc"
+	"github.com/hwcer/cosgo/session"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/logger"
@@ -29,7 +29,7 @@ func NewSocket(conn listener.Conn) *Socket {
 type Socket struct {
 	id        uint64
 	conn      listener.Conn
-	data      any                  //登录后绑定的用户ID
+	data      *session.Data        //登录后绑定的用户信息
 	stop      chan struct{}        //关闭标记
 	magic     byte                 //使用的魔法数字
 	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
@@ -67,7 +67,8 @@ func (sock *Socket) disconnect() bool {
 func (sock *Socket) Id() uint64 {
 	return sock.id
 }
-func (sock *Socket) Data() any {
+
+func (sock *Socket) Data() *session.Data {
 	return sock.data
 }
 
@@ -88,7 +89,7 @@ func (sock *Socket) Close(delay ...int32) {
 }
 
 // OAuth 身份认证
-func (sock *Socket) OAuth(v any) {
+func (sock *Socket) OAuth(v *session.Data) {
 	sock.data = v
 	sock.Emit(EventTypeAuthentication)
 }
@@ -100,9 +101,11 @@ func (sock *Socket) Replaced(ip string) {
 	sock.Close(Options.SocketReplacedTime)
 }
 
-// Reconnect 断线重连,对于SOCKET而言本质上还是登陆，仅仅是事件不同，方便业务逻辑层面区分
-func (sock *Socket) Reconnect(v any) {
-	sock.data = v
+// Reconnect 断线重连,对于SOCKET而言本质上还是登陆，仅仅是触发事件
+func (sock *Socket) Reconnect(v ...*session.Data) {
+	if len(v) > 0 {
+		sock.data = v[0]
+	}
 	sock.Emit(EventTypeReconnected)
 }
 
@@ -114,6 +117,9 @@ func (sock *Socket) Errorf(format any, args ...any) {
 func (sock *Socket) KeepAlive() {
 	if sock.status == SocketStatusNone {
 		sock.heartbeat = 0
+	}
+	if sock.data != nil {
+		sock.data.KeepAlive()
 	}
 }
 
@@ -133,45 +139,45 @@ func (sock *Socket) Magic() byte {
 	return sock.magic
 }
 
-func (sock *Socket) Send(index int32, path string, data any) (err error) {
+func (sock *Socket) Send(index int32, path string, data any) {
 	m := message.Require()
-	if err = m.Marshal(sock.magic, index, path, data); err != nil {
-		return
+	if err := m.Marshal(sock.magic, index, path, data); err == nil {
+		sock.Write(m)
+	} else {
+		logger.Error(err)
 	}
-	return sock.Write(m)
 }
 
 // Async 异步写入数据
-func (sock *Socket) Async(m message.Message) (s chan struct{}, err error) {
+func (sock *Socket) Async(m message.Message) (s chan struct{}) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = fmt.Errorf("%v", e)
+			logger.Error(e)
 		}
 	}()
-	if !sock.Alive() {
-		return s, ErrSocketClosed
-	}
 	s = make(chan struct{})
 	go func() {
-		sock.cwrite <- m
-		close(s)
+		defer func() {
+			close(s)
+		}()
+		if sock.Alive() {
+			sock.cwrite <- m
+		}
 	}()
-	return s, nil
+	return
 }
 
 // Write 外部写入消息,慎用,注意发送失败时消息回收,参考Send
 // 参数中如果有 func(socket *Socket) 类型，写入通道后 执行回调函数
-func (sock *Socket) Write(m message.Message) (err error) {
+func (sock *Socket) Write(m message.Message) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = fmt.Errorf("%v", e)
+			logger.Error(e)
 		}
 	}()
-	if !sock.Alive() {
-		return ErrSocketClosed
+	if sock.Alive() {
+		sock.cwrite <- m
 	}
-	sock.cwrite <- m
-	return
 }
 
 func (sock *Socket) Alive() bool {
@@ -217,9 +223,8 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 			socket.Errorf("server handle error:%v\n%v", e, string(debug.Stack()))
 		}
 	}()
-	var err error
-	var path string
-	if path, _, err = msg.Path(); err != nil {
+	path, _, err := msg.Path()
+	if err != nil {
 		socket.Errorf("message path error code:%d error:%v", msg.Code(), err)
 		return
 	}
@@ -234,9 +239,9 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		return
 	}
 	c := &Context{Socket: socket, Message: msg}
-	if err = handler.Caller(node, c); err != nil {
-		socket.Errorf(err)
-	}
+	reply := handler.handle(node, c)
+	handler.confirm(c, reply)
+
 }
 
 func (sock *Socket) writeMsg(ctx context.Context) {
@@ -255,7 +260,6 @@ func (sock *Socket) writeMsg(ctx context.Context) {
 
 func (sock *Socket) writeMsgTrue(msg message.Message) {
 	defer func() {
-		sock.KeepAlive()
 		message.Release(msg)
 		if e := recover(); e != nil {
 			sock.Errorf(e)

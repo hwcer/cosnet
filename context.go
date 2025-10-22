@@ -17,28 +17,12 @@ func (this *Context) Bind(i any) error {
 	return this.Message.Unmarshal(i)
 }
 
-func (this *Context) Send(path string, data any) error {
+func (this *Context) Send(path string, data any) {
 	i := this.Message.Index()
-	return this.Socket.Send(i, path, data)
+	this.Socket.Send(i, path, data)
 }
-func (this *Context) Write(m message.Message) error {
-	return this.Socket.Write(m)
-}
-
-// Reply 使用当前路径回复
-func (this *Context) Reply(v any) (err error) {
-	var p string
-	//如果包序号为0时原路返回
-	if this.Message.Index() > 0 {
-		p = Options.S2CConfirm
-	}
-	if p == "" {
-		p, _, err = this.Message.Path()
-	}
-	if err != nil {
-		return err
-	}
-	return this.Send(p, v)
+func (this *Context) Write(m message.Message) {
+	this.Socket.Write(m)
 }
 
 // Error 使用当前路径向客户端写入一个默认错误码的信息

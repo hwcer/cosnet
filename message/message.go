@@ -154,9 +154,19 @@ func (m *message) Unmarshal(i any) (err error) {
 	return bi.Unmarshal(m.Body(), i)
 }
 
-func (m *message) Confirm() bool {
+func (m *message) Confirm() (string, bool) {
 	magic := m.Magic()
-	return magic.Confirm
+	if !magic.Confirm {
+		return "", false
+	}
+	var p string
+	//如果包序号为0时原路返回
+	if m.Index() > 0 && Options.S2CConfirm != "" {
+		p = Options.S2CConfirm
+	} else {
+		p, _, _ = m.Path()
+	}
+	return p, true
 }
 
 func (m *message) Release() {

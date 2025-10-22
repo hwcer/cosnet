@@ -15,6 +15,7 @@ var Options = struct {
 	Pool        bool //是否启用消息池 message pool
 	Capacity    int  //message []byte 默认长度
 	MaxDataSize int32
+	S2CConfirm  string //确认包协议，默认原路返回(和请求时一致)
 	New         func() Message
 	Head        func() []byte //包头
 }{
@@ -40,5 +41,5 @@ type Message interface {
 	Marshal(magic byte, index int32, path string, body any) error //使用对象填充包体
 	Unmarshal(i any) (err error)
 	Release()
-	Confirm() bool //是否需要回复确认包
+	Confirm() (string, bool) //是否需要回复确认包
 }
