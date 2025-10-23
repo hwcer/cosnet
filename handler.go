@@ -4,7 +4,6 @@ import (
 	"reflect"
 
 	"github.com/hwcer/cosgo/registry"
-	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/logger"
 )
 
@@ -13,7 +12,7 @@ type handleCaller interface {
 }
 type HandlerFilter func(node *registry.Node) bool
 type HandlerCaller func(node *registry.Node, c *Context) any
-type HandlerSerialize func(c *Context, reply any) []byte
+type HandlerSerialize func(c *Context, reply any) ([]byte, error)
 
 type Handler struct {
 	filter    HandlerFilter
@@ -28,18 +27,9 @@ func (this *Handler) SetCaller(caller func(node *registry.Node, c *Context) any)
 func (this *Handler) SetFilter(filter func(node *registry.Node) bool) {
 	this.filter = filter
 }
-func (this *Handler) SetSerialize(serialize func(c *Context, reply any) []byte) {
+func (this *Handler) SetSerialize(serialize func(c *Context, reply any) ([]byte, error)) {
 	this.serialize = serialize
 }
-
-//func (this *Handler) Use(src any) {
-//	if v, ok := src.(HandlerFilter); ok {
-//		this.filter = v
-//	}
-//	if v, ok := src.(HandlerCaller); ok {
-//		this.caller = v
-//	}
-//}
 
 func (this *Handler) Filter(node *registry.Node) bool {
 	if this.filter != nil {
@@ -79,10 +69,10 @@ func (this *Handler) handle(node *registry.Node, c *Context) (reply any) {
 	return
 }
 
-func (this *Handler) confirm(c *Context, reply any) {
+func (this *Handler) write(c *Context, reply any) (err error) {
 	p, must := c.Message.Confirm()
 	if !must {
-		return
+		return nil
 	}
 	switch v := reply.(type) {
 	case []byte:
@@ -90,20 +80,18 @@ func (this *Handler) confirm(c *Context, reply any) {
 	case *[]byte:
 		c.Send(p, *v)
 	default:
-		data := this.defaultSerialize(c, reply)
-		c.Send(p, data)
+		var data []byte
+		if data, err = this.defaultSerialize(c, reply); err == nil {
+			c.Send(p, data)
+		}
 	}
+	return
 }
 
-func (this *Handler) defaultSerialize(c *Context, reply any) []byte {
+func (this *Handler) defaultSerialize(c *Context, reply any) ([]byte, error) {
 	if this.serialize != nil {
 		return this.serialize(c, reply)
 	}
 	b := c.Message.Binder()
-	v := values.Parse(reply)
-	data, err := b.Marshal(v)
-	if err != nil {
-		c.Error(err) //返回空的确认包，应该检查日志修复问题
-	}
-	return data
+	return b.Marshal(reply)
 }

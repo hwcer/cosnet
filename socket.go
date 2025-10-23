@@ -240,8 +240,9 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 	}
 	c := &Context{Socket: socket, Message: msg}
 	reply := handler.handle(node, c)
-	handler.confirm(c, reply)
-
+	if err = handler.write(c, reply); err == nil {
+		socket.Errorf("write reply message error,path:%s,errMsg:%v", path, err)
+	}
 }
 
 func (sock *Socket) writeMsg(ctx context.Context) {
