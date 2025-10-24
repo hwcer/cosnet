@@ -1,6 +1,7 @@
 package cosnet
 
 import (
+	"github.com/hwcer/cosgo/binder"
 	"github.com/hwcer/cosnet/message"
 )
 
@@ -33,4 +34,7 @@ func (this *Context) Error(err any) {
 // Errorf 使用当前路径向客户端写入一个特定错误码的信息
 func (this *Context) Errorf(format any, args ...any) {
 	Errorf(this.Socket, format, args...)
+}
+func (this *Context) Accept() binder.Binder {
+	return this.Message.Binder()
 }

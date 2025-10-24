@@ -81,7 +81,12 @@ func (this *Handler) write(c *Context, reply any) (err error) {
 		c.Send(p, *v)
 	default:
 		var data []byte
-		if data, err = this.defaultSerialize(c, reply); err == nil {
+		if this.serialize != nil {
+			data, err = this.serialize(c, reply)
+		} else {
+			data, err = this.defaultSerialize(c, reply)
+		}
+		if err == nil {
 			c.Send(p, data)
 		}
 	}
@@ -89,9 +94,6 @@ func (this *Handler) write(c *Context, reply any) (err error) {
 }
 
 func (this *Handler) defaultSerialize(c *Context, reply any) ([]byte, error) {
-	if this.serialize != nil {
-		return this.serialize(c, reply)
-	}
 	b := c.Message.Binder()
 	return b.Marshal(reply)
 }
