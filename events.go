@@ -13,7 +13,7 @@ const (
 	EventTypeMessage                             //所有未注册的消息
 	EventTypeConnected                           //连接成功
 	EventTypeReconnected                         //断线重连
-	EventTypeAuthentication                      //身份认证
+	EventTypeAuthentication                      //身份认证,参数：是否重连
 	EventTypeDisconnect                          //断开连接
 	EventTypeReplaced                            //被顶号
 )

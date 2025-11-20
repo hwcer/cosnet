@@ -88,10 +88,17 @@ func (sock *Socket) Close(delay ...int32) {
 	}
 }
 
-// OAuth 身份认证
-func (sock *Socket) OAuth(v *session.Data) {
+// Authentication 身份认证
+func (sock *Socket) Authentication(v *session.Data, reconnect ...bool) {
 	sock.data = v
-	sock.Emit(EventTypeAuthentication)
+	var r bool
+	if len(reconnect) > 0 {
+		r = reconnect[0]
+	}
+	sock.Emit(EventTypeAuthentication, r)
+	if r {
+		sock.Emit(EventTypeReconnected)
+	}
 }
 
 // Replaced 被顶号
@@ -99,14 +106,6 @@ func (sock *Socket) Replaced(ip string) {
 	sock.Emit(EventTypeReplaced, ip)
 	sock.data = nil //取消与角色关联，避免触发角色的掉线事件
 	sock.Close(Options.SocketReplacedTime)
-}
-
-// Reconnect 断线重连,对于SOCKET而言本质上还是登陆，仅仅是触发事件
-func (sock *Socket) Reconnect(v ...*session.Data) {
-	if len(v) > 0 {
-		sock.data = v[0]
-	}
-	sock.Emit(EventTypeReconnected)
 }
 
 func (sock *Socket) Errorf(format any, args ...any) {
