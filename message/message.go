@@ -172,4 +172,12 @@ func (m *message) Confirm() (string, bool) {
 func (m *message) Release() {
 	m.Head.Release()
 	m.code = 0
+	// 重置 bytes 字段，避免内存泄漏和数据污染
+	if cap(m.bytes) > Options.Capacity {
+		// 如果容量过大，创建新的切片
+		m.bytes = make([]byte, 0, Options.Capacity)
+	} else {
+		// 否则重置切片长度
+		m.bytes = m.bytes[:0]
+	}
 }

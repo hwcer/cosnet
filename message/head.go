@@ -72,6 +72,7 @@ func (h *Head) Binder() binder.Binder {
 }
 
 func (h *Head) Release() {
+	h.magic = 0 // 重置 magic 字段
 	h.size = 0
 	h.index = 0
 }
