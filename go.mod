@@ -3,7 +3,7 @@ module github.com/hwcer/cosnet
 go 1.24.0
 
 require (
-	github.com/hwcer/cosgo v1.6.6
+	github.com/hwcer/cosgo v1.6.7
 	github.com/hwcer/logger v0.2.8
 	golang.org/x/sync v0.19.0
 )
