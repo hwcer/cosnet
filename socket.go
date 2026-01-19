@@ -227,8 +227,8 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		socket.Errorf("message path error code:%d error:%v", msg.Code(), err)
 		return
 	}
-	node, ok := Registry.Match(RegistryMethod, path)
-	if !ok {
+	node, _ := Registry.Search(RegistryMethod, path)
+	if node == nil {
 		socket.Emit(EventTypeMessage, msg)
 		return
 	}
