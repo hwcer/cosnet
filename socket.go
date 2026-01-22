@@ -61,6 +61,7 @@ func (sock *Socket) disconnect() bool {
 	sock.Emit(EventTypeDisconnect)
 	sockets.Delete(sock.id)
 	sock.data = nil
+	//todo 通道中的消息全部释放
 	return true
 }
 
