@@ -11,12 +11,12 @@ import (
 )
 
 var (
-	index    uint64
-	online   int32
-	sockets  syncmap.Map                //存储Socket
-	emitter  map[EventType][]EventsFunc //事件监听
-	instance []listener.Listener
-	Registry *registry.Registry //注册器
+	index    uint64                     // Socket 索引计数器
+	online   int32                      // 当前在线人数
+	sockets  syncmap.Map                // 存储所有 Socket 连接
+	emitter  map[EventType][]EventsFunc // 事件监听器映射
+	instance []listener.Listener        // 监听器实例列表
+	Registry *registry.Registry         // 消息处理器注册器
 )
 
 func init() {
@@ -51,6 +51,10 @@ func Online() int32 {
 	return online
 }
 
+// Range 遍历所有 Socket 连接
+// 参数:
+//
+//	fn: 遍历回调函数，如果返回 false 则停止遍历
 func Range(fn func(socket *Socket) bool) {
 	sockets.Range(func(_, v any) bool {
 		if s, ok := v.(*Socket); ok {
@@ -60,6 +64,14 @@ func Range(fn func(socket *Socket) bool) {
 	})
 }
 
+// Service 创建或获取服务
+// 参数:
+//
+//	name: 服务名称，为空则创建默认服务
+//
+// 返回值:
+//
+//	服务实例
 func Service(name ...string) *registry.Service {
 	handler := &Handler{}
 	var s string

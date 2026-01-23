@@ -22,6 +22,9 @@ func Require() Message {
 }
 
 func Release(i Message) {
+	if i == nil {
+		return
+	}
 	if Options.Pool {
 		i.Release()
 		pool.Put(i)

@@ -1,13 +1,14 @@
 package listener
 
 import (
-	"github.com/hwcer/cosnet/message"
 	"net"
+
+	"github.com/hwcer/cosnet/message"
 )
 
 type Conn interface {
 	net.Conn
-	ReadMessage() (message.Message, error)
+	ReadMessage(message.Message) error
 	WriteMessage(message.Message) error
 }
 

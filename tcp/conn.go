@@ -3,9 +3,10 @@ package tcp
 import (
 	"bytes"
 	"fmt"
-	"github.com/hwcer/cosnet/message"
 	"io"
 	"net"
+
+	"github.com/hwcer/cosnet/message"
 )
 
 func NewConn(c net.Conn) *Conn {
@@ -18,31 +19,29 @@ type Conn struct {
 	buff *bytes.Buffer
 }
 
-func (this *Conn) ReadMessage() (message.Message, error) {
-	var err error
+func (this *Conn) ReadMessage(msg message.Message) (err error) {
 	if this.head == nil {
 		this.head = message.Options.Head()
 	}
 	if _, err = io.ReadFull(this.Conn, this.head); err != nil {
-		return nil, err
-	} else {
-		return this.readMsgTrue(this.head)
+		return err
 	}
-}
-func (this *Conn) readMsgTrue(head []byte) (message.Message, error) {
-	msg := message.Require()
-	err := msg.Parse(head)
+	err = msg.Parse(this.head)
 	if err != nil {
-		return nil, fmt.Errorf("READ HEAD ERR,RemoteAddr:%v,HEAD:%v ,ERR:%v", this.RemoteAddr().String(), head, err)
+		return fmt.Errorf("READ HEAD ERR,RemoteAddr:%v,HEAD:%v ,ERR:%v", this.RemoteAddr().String(), this.head, err)
 	}
+	return this.readMsgTrue(msg)
+
+}
+func (this *Conn) readMsgTrue(msg message.Message) (err error) {
 	if msg.Size() == 0 {
-		return nil, nil
+		return nil
 	}
 	_, err = msg.Write(this.Conn)
 	if err != nil {
-		return nil, fmt.Errorf("READ BODY ERR:%v", err)
+		return fmt.Errorf("READ BODY ERR:%v", err)
 	}
-	return msg, nil
+	return nil
 }
 
 func (this *Conn) WriteMessage(msg message.Message) (err error) {

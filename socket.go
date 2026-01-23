@@ -61,8 +61,19 @@ func (sock *Socket) disconnect() bool {
 	sock.Emit(EventTypeDisconnect)
 	sockets.Delete(sock.id)
 	sock.data = nil
-	//todo 通道中的消息全部释放
-	return true
+
+	// 释放通道中的所有消息
+	for {
+		select {
+		case msg, ok := <-sock.cwrite:
+			if !ok {
+				return true
+			}
+			message.Release(msg)
+		default:
+			return true
+		}
+	}
 }
 
 func (sock *Socket) Id() uint64 {
@@ -144,6 +155,7 @@ func (sock *Socket) Send(index int32, path string, data any) {
 	if err := m.Marshal(sock.magic, index, path, data); err == nil {
 		sock.Write(m)
 	} else {
+		message.Release(m)
 		logger.Error(err)
 	}
 }
@@ -168,7 +180,6 @@ func (sock *Socket) Async(m message.Message) (s chan struct{}) {
 }
 
 // Write 外部写入消息,慎用,注意发送失败时消息回收,参考Send
-// 参数中如果有 func(socket *Socket) 类型，写入通道后 执行回调函数
 func (sock *Socket) Write(m message.Message) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -192,29 +203,29 @@ func (sock *Socket) Heartbeat(v int32) int32 {
 func (sock *Socket) readMsg(_ context.Context) {
 	defer sock.disconnect()
 	for !scc.Stopped() {
-		if msg, err := sock.conn.ReadMessage(); err != nil {
+		msg := message.Require()
+		if err := sock.conn.ReadMessage(msg); err != nil {
+			message.Release(msg)
 			if err != io.EOF && !errors.Is(err, net.ErrClosed) {
 				sock.Errorf(err)
 			}
 			return
-		} else if !sock.readMsgTrue(msg) {
-			return
 		}
+		sock.readMsgTrue(msg)
+		message.Release(msg)
 	}
 }
 
-func (sock *Socket) readMsgTrue(msg message.Message) bool {
+func (sock *Socket) readMsgTrue(msg message.Message) {
 	if msg == nil {
-		return true
+		return
 	}
-	defer message.Release(msg)
 	sock.KeepAlive()
 	if sock.magic == 0 {
 		magic := msg.Magic()
 		sock.magic = magic.Key
 	}
 	sock.handle(sock, msg)
-	return true
 }
 
 func (sock *Socket) handle(socket *Socket, msg message.Message) {
