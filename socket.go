@@ -217,9 +217,6 @@ func (sock *Socket) readMsg(_ context.Context) {
 }
 
 func (sock *Socket) readMsgTrue(msg message.Message) {
-	if msg == nil {
-		return
-	}
 	sock.KeepAlive()
 	if sock.magic == 0 {
 		magic := msg.Magic()

@@ -19,10 +19,11 @@ type Conn struct {
 	buff *bytes.Buffer
 }
 
-func (this *Conn) ReadMessage(msg message.Message) (err error) {
+func (this *Conn) ReadMessage(msg message.Message) error {
 	if this.head == nil {
 		this.head = message.Options.Head()
 	}
+	var err error
 	if _, err = io.ReadFull(this.Conn, this.head); err != nil {
 		return err
 	}
@@ -44,16 +45,17 @@ func (this *Conn) readMsgTrue(msg message.Message) (err error) {
 	return nil
 }
 
-func (this *Conn) WriteMessage(msg message.Message) (err error) {
+func (this *Conn) WriteMessage(msg message.Message) error {
 	if this.buff == nil {
 		this.buff = new(bytes.Buffer)
 	}
 	defer func() {
 		this.buff.Reset()
 	}()
+	var err error
 	if _, err = msg.Bytes(this.buff, true); err != nil {
-		return
+		return err
 	}
 	_, err = this.Conn.Write(this.buff.Bytes())
-	return
+	return err
 }

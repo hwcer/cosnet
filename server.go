@@ -30,6 +30,7 @@ func New(conn listener.Conn) (socket *Socket, err error) {
 	if scc.Stopped() {
 		return nil, errors.New("server closed")
 	}
+
 	socket = NewSocket(conn)
 	sockets.Store(socket.id, socket)
 	Emit(EventTypeConnected, socket)

@@ -2,6 +2,7 @@ package cosnet
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -15,10 +16,10 @@ import (
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/cosnet/tcp"
+	"github.com/hwcer/cosnet/udp"
+	"github.com/hwcer/cosnet/wss"
 	"github.com/hwcer/logger"
 )
-
-var lns []listener.Listener
 
 func init() {
 	cosgo.On(cosgo.EventTypStarted, onStart)
@@ -40,7 +41,8 @@ func Matcher(r io.Reader) bool {
 }
 
 // Listen 监听address
-func Listen(address string) (listener listener.Listener, err error) {
+// tlsConfig 仅仅提供给websocket
+func Listen(address string, tlsConfig ...*tls.Config) (listener listener.Listener, err error) {
 	addr := utils.NewAddress(address)
 	if addr.Scheme == "" {
 		addr.Scheme = "tcp"
@@ -49,8 +51,10 @@ func Listen(address string) (listener listener.Listener, err error) {
 	switch network {
 	case "tcp", "tcp4", "tcp6":
 		listener, err = tcp.New(network, addr.String())
-	//case "udp", "udp4", "udp6":
-	//	listener, err = udp.New(network, addr.String())
+	case "ws", "wss", "wss4", "wss5", "wss6":
+		listener, err = wss.New(network, addr.String(), tlsConfig...)
+	case "udp", "udp4", "udp6":
+		listener, err = udp.New(network, addr.String())
 	//case "unix", "unixgram", "unixpacket":
 	default:
 		err = errors.New("address scheme unknown")
@@ -88,7 +92,7 @@ func onStart() error {
 //
 //	错误信息，如果关闭失败则返回
 func onClose() error {
-	for _, ln := range lns {
+	for _, ln := range instance {
 		_ = ln.Close()
 	}
 	return nil
@@ -108,7 +112,7 @@ func acceptListener(ln listener.Listener) {
 	defer func() {
 		_ = ln.Close()
 	}()
-	lns = append(lns, ln)
+	instance = append(instance, ln)
 	for !scc.Stopped() {
 		conn, err := ln.Accept()
 		if err == nil {

@@ -1,6 +1,6 @@
 # cosnet
 
-cosnet 是一个基于 Go 语言开发的高性能网络通信库，专注于 TCP 连接管理和消息处理。它提供了一套完整的网络通信框架，包括连接管理、消息编解码、路由分发和事件处理等功能。
+cosnet 是一个基于 Go 语言开发的高性能网络通信库，支持 TCP、UDP 和 WebSocket (WSS) 连接管理和消息处理。它提供了一套完整的网络通信框架，包括连接管理、消息编解码、路由分发和事件处理等功能。
 
 ## 功能特性
 
@@ -29,6 +29,12 @@ cosnet/
 ├── tcp/               # TCP 实现
 │   ├── conn.go        # TCP 连接
 │   └── listener.go    # TCP 监听器
+├── udp/               # UDP 实现
+│   ├── conn.go        # UDP 连接
+│   └── listener.go    # UDP 监听器
+├── wss/               # WebSocket 实现
+│   ├── conn.go        # WebSocket 连接
+│   └── listener.go    # WebSocket 监听器
 ├── context.go         # 上下文
 ├── cosnet.go          # 核心功能
 ├── events.go          # 事件系统
@@ -68,6 +74,20 @@ func main() {
     _, err := cosnet.Listen("tcp://0.0.0.0:8080")
     if err != nil {
         fmt.Println("监听失败:", err)
+        return
+    }
+    
+    // 监听 UDP 连接
+    _, err = cosnet.Listen("udp://0.0.0.0:8081")
+    if err != nil {
+        fmt.Println("UDP 监听失败:", err)
+        return
+    }
+    
+    // 监听 WebSocket 连接
+    _, err = cosnet.Listen("ws://0.0.0.0:8082")
+    if err != nil {
+        fmt.Println("WebSocket 监听失败:", err)
         return
     }
     
@@ -118,8 +138,10 @@ func main() {
 
 ### 服务器相关
 
-- **`Listen(address string) (listener listener.Listener, err error)`**：
-  监听指定地址的 TCP 连接
+- **`Listen(address string, tlsConfig ...*tls.Config) (listener listener.Listener, err error)`**：
+  监听指定地址的连接，支持 TCP、UDP 和 WebSocket 协议
+  - `address`：监听地址，格式为 `scheme://host:port`，其中 scheme 可以是 `tcp`、`udp`、`ws` 或 `wss`
+  - `tlsConfig`：TLS 配置，仅用于 WebSocket (wss) 协议
 
 - **`Connect(address string) (socket *Socket, err error)`**：
   连接到指定地址的服务器
