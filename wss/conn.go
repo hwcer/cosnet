@@ -89,7 +89,7 @@ func (c *Conn) WriteMessage(socket listener.Socket, msg message.Message) error {
 		return nil
 	}
 	//logger.Trace("Socket response,PATH:%v   BODY:%v", msg.Path(), string(b))
-	err = c.Conn.WriteMessage(websocket.TextMessage, b)
+	err = c.Conn.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		return err
 	}
