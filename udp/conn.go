@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 )
 
@@ -71,7 +72,7 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 }
 
 // ReadMessage 实现cosnet的消息读取接口
-func (c *Conn) ReadMessage(msg message.Message) error {
+func (c *Conn) ReadMessage(_ listener.Socket, msg message.Message) error {
 	// 参考TCP实现，使用head字段存储消息头
 	if c.head == nil {
 		c.head = message.Options.Head()
@@ -97,7 +98,7 @@ func (c *Conn) ReadMessage(msg message.Message) error {
 }
 
 // WriteMessage 实现cosnet的消息写入接口
-func (c *Conn) WriteMessage(msg message.Message) error {
+func (c *Conn) WriteMessage(_ listener.Socket, msg message.Message) error {
 	// 创建缓冲区
 	buffer := bytes.NewBuffer(nil)
 

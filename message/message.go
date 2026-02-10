@@ -101,8 +101,8 @@ func (m *message) Reset(b []byte) error {
 }
 
 // Marshal 将一个对象放入Message.data
-func (m *message) Marshal(magic byte, index int32, path string, body any) (err error) {
-	if err = m.Head.format(magic, index); err != nil {
+func (m *message) Marshal(magic byte, flag Flag, index int32, path string, body any) (err error) {
+	if err = m.Head.format(magic, flag, index); err != nil {
 		return
 	}
 	mc := m.Magic()
@@ -153,22 +153,15 @@ func (m *message) Unmarshal(i any) (err error) {
 	}
 	return bi.Unmarshal(m.Body(), i)
 }
-
-func (m *message) Confirm() (string, bool) {
-	magic := m.Magic()
-	if !magic.Confirm {
-		return "", false
-	}
+func (m *message) Confirm() string {
 	var p string
-	//如果包序号为0时原路返回
-	if m.Index() > 0 && Options.S2CConfirm != "" {
+	if Options.S2CConfirm != "" {
 		p = Options.S2CConfirm
 	} else {
 		p, _, _ = m.Path()
 	}
-	return p, true
+	return p
 }
-
 func (m *message) Release() {
 	m.Head.Release()
 	m.code = 0

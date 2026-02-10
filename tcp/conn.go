@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 
+	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 )
 
@@ -19,7 +20,7 @@ type Conn struct {
 	buff *bytes.Buffer
 }
 
-func (this *Conn) ReadMessage(msg message.Message) error {
+func (this *Conn) ReadMessage(_ listener.Socket, msg message.Message) error {
 	if this.head == nil {
 		this.head = message.Options.Head()
 	}
@@ -45,7 +46,7 @@ func (this *Conn) readMsgTrue(msg message.Message) (err error) {
 	return nil
 }
 
-func (this *Conn) WriteMessage(msg message.Message) error {
+func (this *Conn) WriteMessage(_ listener.Socket, msg message.Message) error {
 	if this.buff == nil {
 		this.buff = new(bytes.Buffer)
 	}

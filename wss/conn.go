@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/logger"
 )
@@ -45,7 +46,8 @@ func (c *Conn) SetDeadline(t time.Time) error {
 }
 
 // ReadMessage 实现cosnet新版本的接口
-func (c *Conn) ReadMessage(msg message.Message) error {
+// 返回错误时会关闭连接
+func (c *Conn) ReadMessage(socket listener.Socket, msg message.Message) error {
 	t, b, err := c.Conn.ReadMessage()
 	if err != nil {
 		if websocket.IsUnexpectedCloseError(err) {
@@ -57,19 +59,18 @@ func (c *Conn) ReadMessage(msg message.Message) error {
 		return net.ErrClosed
 	}
 	if t != websocket.BinaryMessage && t != websocket.TextMessage {
-		return nil
+		return errors.New("wss conn ReadMessage not support")
 	}
 	if len(b) == 0 {
 		return io.EOF
 	}
-
-	if err = msg.Reset(b); err != nil {
+	if err = Options.Transform.ReadMessage(socket, msg, b); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *Conn) WriteMessage(msg message.Message) error {
+func (c *Conn) WriteMessage(socket listener.Socket, msg message.Message) error {
 	if c.buff == nil {
 		c.buff = new(bytes.Buffer)
 	}
@@ -78,7 +79,7 @@ func (c *Conn) WriteMessage(msg message.Message) error {
 	}()
 
 	var err error
-	if _, err = msg.Bytes(c.buff, true); err != nil {
+	if _, err = Options.Transform.WriteMessage(socket, msg, c.buff); err != nil {
 		logger.Error(err)
 		return err
 	}
@@ -88,7 +89,7 @@ func (c *Conn) WriteMessage(msg message.Message) error {
 		return nil
 	}
 	//logger.Trace("Socket response,PATH:%v   BODY:%v", msg.Path(), string(b))
-	err = c.Conn.WriteMessage(websocket.BinaryMessage, b)
+	err = c.Conn.WriteMessage(websocket.TextMessage, b)
 	if err != nil {
 		return err
 	}

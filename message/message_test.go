@@ -12,7 +12,7 @@ type foo struct {
 func TestName(t *testing.T) {
 	msg := &message{}
 	d := &foo{Name: "test"}
-	if err := msg.Marshal(MagicNumberPathJsonConfirm, 101, "test", d); err != nil {
+	if err := msg.Marshal(MagicNumberPathJson, 101, "test", d); err != nil {
 		t.Error(err)
 		return
 	}
@@ -51,7 +51,7 @@ func TestMessagePoolRecycling(t *testing.T) {
 	// 获取第一个消息对象
 	msg1 := Require()
 	d1 := &foo{Name: "test1"}
-	if err := msg1.Marshal(MagicNumberPathJsonConfirm, 101, "test", d1); err != nil {
+	if err := msg1.Marshal(MagicNumberPathJson, 101, "test", d1); err != nil {
 		t.Error(err)
 		return
 	}

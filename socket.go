@@ -87,6 +87,9 @@ func (sock *Socket) Data() *session.Data {
 func (sock *Socket) Emit(e EventType, args ...any) {
 	Emit(e, sock, args...)
 }
+func (sock *Socket) Conn() listener.Conn {
+	return sock.conn
+}
 
 // Close 强制关闭,无法重连
 // delay 延时关闭，单位秒
@@ -150,9 +153,9 @@ func (sock *Socket) Magic() byte {
 	return sock.magic
 }
 
-func (sock *Socket) Send(index int32, path string, data any) {
+func (sock *Socket) Send(flag message.Flag, index int32, path string, data any) {
 	m := message.Require()
-	if err := m.Marshal(sock.magic, index, path, data); err == nil {
+	if err := m.Marshal(sock.magic, flag, index, path, data); err == nil {
 		sock.Write(m)
 	} else {
 		message.Release(m)
@@ -204,7 +207,7 @@ func (sock *Socket) readMsg(_ context.Context) {
 	defer sock.disconnect()
 	for !scc.Stopped() {
 		msg := message.Require()
-		if err := sock.conn.ReadMessage(msg); err != nil {
+		if err := sock.conn.ReadMessage(sock, msg); err != nil {
 			message.Release(msg)
 			if err != io.EOF && !errors.Is(err, net.ErrClosed) {
 				sock.Errorf(err)
@@ -218,8 +221,12 @@ func (sock *Socket) readMsg(_ context.Context) {
 
 func (sock *Socket) readMsgTrue(msg message.Message) {
 	sock.KeepAlive()
+	magic := msg.Magic()
+	if magic == nil || magic.Key == 0 {
+		logger.Debug("magic is nil :%v", msg)
+		return //未被初始化的消息
+	}
 	if sock.magic == 0 {
-		magic := msg.Magic()
 		sock.magic = magic.Key
 	}
 	sock.handle(sock, msg)
@@ -248,7 +255,7 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 	}
 	c := &Context{Socket: socket, Message: msg}
 	reply := handler.handle(node, c)
-	if err = handler.write(c, reply); err != nil {
+	if err = handler.reply(c, reply); err != nil {
 		socket.Errorf("write reply message error,path:%s,errMsg:%v", path, err)
 	}
 }
@@ -274,7 +281,7 @@ func (sock *Socket) writeMsgTrue(msg message.Message) {
 			sock.Errorf(e)
 		}
 	}()
-	if err := sock.conn.WriteMessage(msg); err != nil {
+	if err := sock.conn.WriteMessage(sock, msg); err != nil {
 		sock.Errorf(err)
 	}
 }

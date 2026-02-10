@@ -3,13 +3,14 @@ package listener
 import (
 	"net"
 
+	"github.com/hwcer/cosgo/session"
 	"github.com/hwcer/cosnet/message"
 )
 
 type Conn interface {
 	net.Conn
-	ReadMessage(message.Message) error
-	WriteMessage(message.Message) error
+	ReadMessage(Socket, message.Message) error
+	WriteMessage(Socket, message.Message) error
 }
 
 type Listener interface {
@@ -22,4 +23,14 @@ type Listener interface {
 
 	// Addr returns the listener's network address.
 	Addr() net.Addr
+}
+
+type Socket interface {
+	Id() uint64
+	Data() *session.Data
+	Conn() Conn
+	Send(flag message.Flag, index int32, path string, data any)
+	Errorf(format any, args ...any)
+	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
 }

@@ -6,12 +6,17 @@ import (
 	"github.com/hwcer/cosgo/binder"
 )
 
-const messageHeadSize = 9
+const messageHeadSize = 10
 
 type Head struct {
 	magic byte  //1
-	size  int32 //4 BODY总长度(包含PATH)
+	flag  Flag  //1
+	size  int32 //4 BODY总长度(包含PATH) || code
 	index int32 //4 client_id,server_id
+}
+
+func (h *Head) Flag() Flag {
+	return h.flag
 }
 
 // Size 包体总长
@@ -37,8 +42,9 @@ func (h *Head) Parse(head []byte) error {
 		return ErrMsgHeadIllegal
 	}
 	h.magic = head[0]
-	h.size = int32(magic.Binary.Uint32(head[1:5]))
-	h.index = int32(magic.Binary.Uint32(head[5:9]))
+	h.flag = Flag(head[1])                           // 解析 tags 字段
+	h.size = int32(magic.Binary.Uint32(head[2:6]))   // 调整 size 字段位置
+	h.index = int32(magic.Binary.Uint32(head[6:10])) // 调整 index 字段位置
 	if h.size > Options.MaxDataSize {
 		return ErrMsgDataSizeTooLong
 	}
@@ -48,13 +54,15 @@ func (h *Head) bytes() []byte {
 	magic := h.Magic()
 	head := make([]byte, messageHeadSize)
 	head[0] = h.magic
-	magic.Binary.PutUint32(head[1:5], uint32(h.size))
-	magic.Binary.PutUint32(head[5:9], uint32(h.index))
+	head[1] = uint8(h.flag)                             // 写入 tags 字段
+	magic.Binary.PutUint32(head[2:6], uint32(h.size))   // 调整 size 字段位置
+	magic.Binary.PutUint32(head[6:10], uint32(h.index)) // 调整 index 字段位置
 	return head
 }
 
-func (h *Head) format(magic byte, index int32) (err error) {
+func (h *Head) format(magic byte, flag Flag, index int32) (err error) {
 	h.magic = magic
+	h.flag = flag
 	h.index = index
 
 	mc := Magics.Get(h.magic)
@@ -73,6 +81,7 @@ func (h *Head) Binder() binder.Binder {
 
 func (h *Head) Release() {
 	h.magic = 0 // 重置 magic 字段
+	h.flag = 0  // 重置 tags 字段
 	h.size = 0
 	h.index = 0
 }
