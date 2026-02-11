@@ -50,23 +50,6 @@ func (this *Context) Write(m message.Message) {
 	this.Socket.Write(m)
 }
 
-// Error 使用当前路径向客户端写入一个默认错误码的信息
-// 参数:
-//
-//	err: 错误信息
-func (this *Context) Error(err any) {
-	Errorf(this.Socket, err)
-}
-
-// Errorf 使用当前路径向客户端写入一个特定错误码的信息
-// 参数:
-//
-//	format: 错误格式
-//	args: 错误参数
-func (this *Context) Errorf(format any, args ...any) {
-	Errorf(this.Socket, format, args...)
-}
-
 // Accept 获取消息的绑定器
 // 返回值:
 //

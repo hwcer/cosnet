@@ -15,16 +15,6 @@ import (
 	"github.com/hwcer/logger"
 )
 
-func NewSocket(conn listener.Conn) *Socket {
-	socket := &Socket{conn: conn}
-	socket.id = atomic.AddUint64(&index, 1)
-	socket.stop = make(chan struct{})
-	socket.cwrite = make(chan message.Message, Options.WriteChanSize)
-	scc.SGO(socket.readMsg)
-	scc.SGO(socket.writeMsg)
-	return socket
-}
-
 // Socket 基础网络连接
 type Socket struct {
 	id        uint64
@@ -34,6 +24,8 @@ type Socket struct {
 	magic     byte                 //使用的魔法数字
 	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
 	status    int32                // 1--正在关闭(等待通道中的消息全部发送完毕)  2-已经关闭
+	cosnet    *Cosnet
+	address   *string //作为客户端时，连接的服务器地址,为空时被视为服务器端socket
 	heartbeat int32
 }
 
@@ -43,6 +35,12 @@ const (
 	SocketStatusClosed  int32 = 2
 )
 
+func (sock *Socket) connect(conn listener.Conn) {
+	sock.conn = conn
+	sock.stop = make(chan struct{})
+	scc.SGO(sock.readMsg)
+	scc.SGO(sock.writeMsg)
+}
 func (sock *Socket) disconnect() bool {
 	v := sock.status
 	if v == SocketStatusClosed {
@@ -58,8 +56,12 @@ func (sock *Socket) disconnect() bool {
 	}()
 	close(sock.stop)
 	_ = sock.conn.Close()
+	sock.conn = nil
+	if sock.address != nil {
+		return sock.reconnect() //作为客户端，不触发事件直接尝试重连
+	}
 	sock.Emit(EventTypeDisconnect)
-	sockets.Delete(sock.id)
+	sock.cosnet.sockets.Delete(sock.id)
 	sock.data = nil
 
 	// 释放通道中的所有消息
@@ -76,6 +78,21 @@ func (sock *Socket) disconnect() bool {
 	}
 }
 
+// reconnect 断线重连，仅仅作为客户端时自动重连服务器
+func (sock *Socket) reconnect() bool {
+	address := *sock.address
+	logger.Alert("socket reconnect:%s", address)
+	scc.SGO(func(ctx context.Context) {
+		for !scc.Stopped() {
+			if conn, err := sock.cosnet.tryConnect(address); err == nil {
+				sock.connect(conn)
+				return
+			}
+		}
+	})
+	return false
+}
+
 func (sock *Socket) Id() uint64 {
 	return sock.id
 }
@@ -85,10 +102,14 @@ func (sock *Socket) Data() *session.Data {
 }
 
 func (sock *Socket) Emit(e EventType, args ...any) {
-	Emit(e, sock, args...)
+	sock.cosnet.Emit(e, sock, args...)
 }
 func (sock *Socket) Conn() listener.Conn {
 	return sock.conn
+}
+
+func (sock *Socket) Cosnet() *Cosnet {
+	return sock.cosnet
 }
 
 // Close 强制关闭,无法重连
@@ -124,7 +145,7 @@ func (sock *Socket) Replaced(ip string) {
 }
 
 func (sock *Socket) Errorf(format any, args ...any) {
-	Errorf(sock, format, args...)
+	sock.cosnet.Errorf(sock, format, args...)
 }
 
 // KeepAlive 任何行为都清空heartbeat
@@ -155,7 +176,11 @@ func (sock *Socket) Magic() byte {
 
 func (sock *Socket) Send(flag message.Flag, index int32, path string, data any) {
 	m := message.Require()
-	if err := m.Marshal(sock.magic, flag, index, path, data); err == nil {
+	magic := sock.magic
+	if magic == 0 {
+		magic = message.MagicNumberPathJson
+	}
+	if err := m.Marshal(magic, flag, index, path, data); err == nil {
 		sock.Write(m)
 	} else {
 		message.Release(m)
@@ -198,11 +223,6 @@ func (sock *Socket) Alive() bool {
 	return sock.status == SocketStatusNone && sock.conn != nil
 }
 
-func (sock *Socket) Heartbeat(v int32) int32 {
-	sock.heartbeat += v
-	return sock.heartbeat
-}
-
 func (sock *Socket) readMsg(_ context.Context) {
 	defer sock.disconnect()
 	for !scc.Stopped() {
@@ -243,7 +263,7 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		socket.Errorf("message path error code:%d error:%v", msg.Code(), err)
 		return
 	}
-	node, _ := Registry.Search(RegistryMethod, path)
+	node, _ := sock.cosnet.Registry.Search(RegistryMethod, path)
 	if node == nil {
 		socket.Emit(EventTypeMessage, msg)
 		return
@@ -285,3 +305,22 @@ func (sock *Socket) writeMsgTrue(msg message.Message) {
 		sock.Errorf(err)
 	}
 }
+
+// doHeartbeat 执行单个连接的心跳检查
+// 每一次Heartbeat()调用，heartbeat计数加1
+// 参数:
+//
+//	v: 心跳计数增量
+func (sock *Socket) Heartbeat(v int32) int32 {
+	// 如果设置了连接超时时间，并且心跳计数超过了超时时间，则断开连接
+	sock.heartbeat += v
+	if Options.SocketConnectTime > 0 && sock.heartbeat > Options.SocketConnectTime {
+		sock.disconnect()
+	}
+	return sock.heartbeat
+}
+
+//func (sock *Socket) Heartbeat(v int32) int32 {
+//	sock.heartbeat += v
+//	return sock.heartbeat
+//}

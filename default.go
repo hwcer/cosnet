@@ -1,55 +1,42 @@
 package cosnet
 
 import (
-	"errors"
+	"crypto/tls"
 
 	"github.com/hwcer/cosgo/registry"
-	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
-	"golang.org/x/sync/syncmap"
 )
 
-var (
-	index    uint64                     // Socket 索引计数器
-	online   int32                      // 当前在线人数
-	sockets  syncmap.Map                // 存储所有 Socket 连接
-	emitter  map[EventType][]EventsFunc // 事件监听器映射
-	instance []listener.Listener        // 监听器实例列表
-	Registry *registry.Registry         // 消息处理器注册器
-)
+var Default = New(Options.Heartbeat)
 
-func init() {
-	sockets = syncmap.Map{}
-	emitter = make(map[EventType][]EventsFunc)
-	Registry = registry.New()
+// NewSocket 创建新socket并自动加入到Sockets管理器
+func NewSocket(conn listener.Conn) (socket *Socket, err error) {
+	return Default.NewSocket(conn)
 }
 
-// New 创建新socket并自动加入到Sockets管理器
-func New(conn listener.Conn) (socket *Socket, err error) {
-	if scc.Stopped() {
-		return nil, errors.New("server closed")
-	}
+// onStart 当 cosgo 框架启动时调用
+// 返回值:
+//
+//	错误信息，如果启动失败则返回
 
-	socket = NewSocket(conn)
-	sockets.Store(socket.id, socket)
-	Emit(EventTypeConnected, socket)
-	return
+func Start() error {
+	Default.heartbeat = Options.Heartbeat
+	return Default.Start()
+}
+
+func On(eventType EventType, eventFunc func(*Socket, any)) {
+	Default.On(eventType, eventFunc)
 }
 
 // Get 通过SOCKET ID获取SOCKET
 // id.(string) 通过用户ID获取
 // id.(MID) 通过SOCKET ID获取
 func Get(id uint64) (socket *Socket) {
-	if i, ok := sockets.Load(id); ok {
+	if i, ok := Default.sockets.Load(id); ok {
 		socket, _ = i.(*Socket)
 	}
 	return
-}
-
-// Online 当前在线总人数
-func Online() int32 {
-	return online
 }
 
 // Range 遍历所有 Socket 连接
@@ -57,7 +44,7 @@ func Online() int32 {
 //
 //	fn: 遍历回调函数，如果返回 false 则停止遍历
 func Range(fn func(socket *Socket) bool) {
-	sockets.Range(func(_, v any) bool {
+	Default.sockets.Range(func(_, v any) bool {
 		if s, ok := v.(*Socket); ok {
 			return fn(s)
 		}
@@ -79,7 +66,7 @@ func Service(name ...string) *registry.Service {
 	if len(name) > 0 {
 		s = name[0]
 	}
-	service := Registry.Service(s, handler)
+	service := Default.Registry.Service(s, handler)
 	service.SetMethods([]string{RegistryMethod})
 	return service
 }
@@ -92,10 +79,37 @@ func Register(i interface{}, prefix ...string) error {
 
 // Broadcast 广播,filter 过滤函数，如果不为nil且返回false则不对当期socket进行发送消息
 func Broadcast(m message.Message, filter func(*Socket) bool) {
-	Range(func(sock *Socket) bool {
+	Default.Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
 			_ = sock.Async(m)
 		}
 		return true
 	})
+}
+
+// Listen 监听address
+// tlsConfig 仅仅提供给websocket
+func Listen(address string, tlsConfig ...*tls.Config) (listener listener.Listener, err error) {
+	return Default.Listen(address, tlsConfig...)
+}
+
+// Accept 接受监听器的连接请求
+// 参数:
+//
+//	ln: 监听器
+func Accept(ln listener.Listener) {
+	Default.Accept(ln)
+}
+
+// Connect 连接服务器address
+func Connect(address string) (socket *Socket, err error) {
+	return Default.Connect(address)
+}
+
+// Heartbeat 对所有连接执行心跳检查
+// 参数:
+//
+//	v: 心跳计数增量
+func Heartbeat(v int32) {
+	Default.Heartbeat(v)
 }

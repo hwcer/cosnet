@@ -11,13 +11,10 @@ import (
 
 // Options WSS模块配置选项
 var Options = struct {
-	// Origin 允许的来源域名列表
-	Origin []string
-	// ConnChanSize 连接通道缓存大小
+	Origin       []string
 	ConnChanSize int32
-	// Upgrader websocket升级器配置
-	Upgrader  websocket.Upgrader
-	Transform transform
+	Upgrader     websocket.Upgrader
+	Transform    transform
 }{
 	Origin:       []string{},                                                      // 默认允许所有来源
 	ConnChanSize: 100,                                                             // 连接通道缓存 100 条消息
