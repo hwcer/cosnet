@@ -24,7 +24,7 @@ type Socket struct {
 	magic     byte                 //使用的魔法数字
 	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
 	status    int32                // 1--正在关闭(等待通道中的消息全部发送完毕)  2-已经关闭
-	cosnet    *Cosnet
+	cosnet    *NetHub
 	address   *string //作为客户端时，连接的服务器地址,为空时被视为服务器端socket
 	heartbeat int32
 }
@@ -107,8 +107,14 @@ func (sock *Socket) Emit(e EventType, args ...any) {
 func (sock *Socket) Conn() listener.Conn {
 	return sock.conn
 }
+func (sock *Socket) Type() listener.SocketType {
+	if sock.address != nil {
+		return listener.SocketTypeClient
+	}
+	return listener.SocketTypeServer
+}
 
-func (sock *Socket) Cosnet() *Cosnet {
+func (sock *Socket) NetHub() *NetHub {
 	return sock.cosnet
 }
 

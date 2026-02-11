@@ -41,18 +41,8 @@ func Matcher(r io.Reader) bool {
 	return n == 1 && message.Magics.Has(buf[0])
 }
 
-type Cosnet struct {
-	index     uint64 // Socket 索引计数器
-	started   atomic.Bool
-	sockets   syncmap.Map                // 存储所有 Socket 连接
-	emitter   map[EventType][]EventsFunc // 事件监听器映射
-	instance  []listener.Listener        // 监听器实例列表
-	heartbeat int32                      //心跳间隔(s)
-	Registry  *registry.Registry         // 消息处理器注册器
-}
-
-func New(heartbeat int32) *Cosnet {
-	ss := &Cosnet{
+func New(heartbeat int32) *NetHub {
+	ss := &NetHub{
 		index:     0,
 		sockets:   syncmap.Map{},
 		emitter:   make(map[EventType][]EventsFunc),
@@ -63,8 +53,18 @@ func New(heartbeat int32) *Cosnet {
 	return ss
 }
 
-// NewSocket 创建新socket并自动加入到Sockets管理器
-func (cos *Cosnet) NewSocket(conn listener.Conn) (socket *Socket, err error) {
+type NetHub struct {
+	index     uint64 // Socket 索引计数器
+	started   atomic.Bool
+	sockets   syncmap.Map                // 存储所有 Socket 连接
+	emitter   map[EventType][]EventsFunc // 事件监听器映射
+	instance  []listener.Listener        // 监听器实例列表
+	heartbeat int32                      //心跳间隔(s)
+	Registry  *registry.Registry         // 消息处理器注册器
+}
+
+// Create 创建新socket并自动加入到NetHub管理器
+func (cos *NetHub) Create(conn listener.Conn) (socket *Socket, err error) {
 	if scc.Stopped() {
 		return nil, errors.New("server closed")
 	}
@@ -80,7 +80,7 @@ func (cos *Cosnet) NewSocket(conn listener.Conn) (socket *Socket, err error) {
 // Get 通过SOCKET ID获取SOCKET
 // id.(string) 通过用户ID获取
 // id.(MID) 通过SOCKET ID获取
-func (cos *Cosnet) Get(id uint64) (socket *Socket) {
+func (cos *NetHub) Get(id uint64) (socket *Socket) {
 	if i, ok := cos.sockets.Load(id); ok {
 		socket, _ = i.(*Socket)
 	}
@@ -91,7 +91,7 @@ func (cos *Cosnet) Get(id uint64) (socket *Socket) {
 // 参数:
 //
 //	fn: 遍历回调函数，如果返回 false 则停止遍历
-func (cos *Cosnet) Range(fn func(socket *Socket) bool) {
+func (cos *NetHub) Range(fn func(socket *Socket) bool) {
 	cos.sockets.Range(func(_, v any) bool {
 		if s, ok := v.(*Socket); ok {
 			return fn(s)
@@ -108,7 +108,7 @@ func (cos *Cosnet) Range(fn func(socket *Socket) bool) {
 // 返回值:
 //
 //	服务实例
-func (cos *Cosnet) Service(name ...string) *registry.Service {
+func (cos *NetHub) Service(name ...string) *registry.Service {
 	handler := &Handler{}
 	var s string
 	if len(name) > 0 {
@@ -120,13 +120,13 @@ func (cos *Cosnet) Service(name ...string) *registry.Service {
 }
 
 // Register 使用默认Service注册接口
-func (cos *Cosnet) Register(i interface{}, prefix ...string) error {
+func (cos *NetHub) Register(i interface{}, prefix ...string) error {
 	service := cos.Service("")
 	return service.Register(i, prefix...)
 }
 
 // Broadcast 广播,filter 过滤函数，如果不为nil且返回false则不对当期socket进行发送消息
-func (cos *Cosnet) Broadcast(m message.Message, filter func(*Socket) bool) {
+func (cos *NetHub) Broadcast(m message.Message, filter func(*Socket) bool) {
 	cos.Range(func(sock *Socket) bool {
 		if filter == nil || filter(sock) {
 			_ = sock.Async(m)
@@ -140,7 +140,7 @@ func (cos *Cosnet) Broadcast(m message.Message, filter func(*Socket) bool) {
 //
 //	e: 事件类型
 //	f: 事件处理函数
-func (cos *Cosnet) On(e EventType, f EventsFunc) {
+func (cos *NetHub) On(e EventType, f EventsFunc) {
 	cos.emitter[e] = append(cos.emitter[e], f)
 }
 
@@ -150,7 +150,7 @@ func (cos *Cosnet) On(e EventType, f EventsFunc) {
 //	e: 事件类型
 //	s: 触发事件的Socket
 //	attach: 事件附加数据
-func (cos *Cosnet) Emit(e EventType, s *Socket, attach ...any) {
+func (cos *NetHub) Emit(e EventType, s *Socket, attach ...any) {
 	var v any
 	if len(attach) > 0 {
 		v = attach[0]
@@ -166,7 +166,7 @@ func (cos *Cosnet) Emit(e EventType, s *Socket, attach ...any) {
 //	s: 触发错误的Socket
 //	format: 错误格式
 //	args: 错误参数
-func (cos *Cosnet) Errorf(s *Socket, format any, args ...any) {
+func (cos *NetHub) Errorf(s *Socket, format any, args ...any) {
 	defer func() {
 		if e := recover(); e != nil {
 			logger.Error(e)
@@ -183,7 +183,7 @@ func (cos *Cosnet) Errorf(s *Socket, format any, args ...any) {
 
 // Listen 监听address
 // tlsConfig 仅仅提供给websocket
-func (cos *Cosnet) Listen(address string, tlsConfig ...*tls.Config) (listener listener.Listener, err error) {
+func (cos *NetHub) Listen(address string, tlsConfig ...*tls.Config) (listener listener.Listener, err error) {
 	addr := utils.NewAddress(address)
 	if addr.Scheme == "" {
 		addr.Scheme = "tcp"
@@ -211,7 +211,7 @@ func (cos *Cosnet) Listen(address string, tlsConfig ...*tls.Config) (listener li
 // 参数:
 //
 //	ln: 监听器
-func (cos *Cosnet) Accept(ln listener.Listener) {
+func (cos *NetHub) Accept(ln listener.Listener) {
 	scc.CGO(func(ctx context.Context) {
 		defer func() {
 			if err := recover(); err != nil {
@@ -225,7 +225,7 @@ func (cos *Cosnet) Accept(ln listener.Listener) {
 		for !scc.Stopped() {
 			conn, err := ln.Accept()
 			if err == nil {
-				_, err = cos.NewSocket(conn)
+				_, err = cos.Create(conn)
 			}
 			if errors.Is(err, net.ErrClosed) {
 				return
@@ -240,7 +240,7 @@ func (cos *Cosnet) Accept(ln listener.Listener) {
 // 返回值:
 //
 //	错误信息，如果启动失败则返回
-func (cos *Cosnet) Start() error {
+func (cos *NetHub) Start() error {
 	if !cos.started.CompareAndSwap(false, true) {
 		logger.Warn("cosnet already started")
 		return nil
@@ -254,7 +254,7 @@ func (cos *Cosnet) Start() error {
 // 返回值:
 //
 //	错误信息，如果关闭失败则返回
-func (cos *Cosnet) stop() error {
+func (cos *NetHub) stop() error {
 	for _, ln := range cos.instance {
 		_ = ln.Close()
 	}
@@ -262,12 +262,12 @@ func (cos *Cosnet) stop() error {
 }
 
 // Connect 连接服务器address
-func (cos *Cosnet) Connect(address string) (socket *Socket, err error) {
+func (cos *NetHub) Connect(address string) (socket *Socket, err error) {
 	conn, err := cos.tryConnect(address)
 	if err != nil {
 		return nil, err
 	}
-	socket, err = cos.NewSocket(conn)
+	socket, err = cos.Create(conn)
 	if err == nil {
 		socket.address = &address
 	}
@@ -282,7 +282,7 @@ func (cos *Cosnet) Connect(address string) (socket *Socket, err error) {
 // 返回值:
 //
 //	连接对象和错误信息
-func (cos *Cosnet) tryConnect(s string) (listener.Conn, error) {
+func (cos *NetHub) tryConnect(s string) (listener.Conn, error) {
 	address := utils.NewAddress(s)
 	if address.Scheme == "" {
 		address.Scheme = "tcp"
@@ -307,7 +307,7 @@ func (cos *Cosnet) tryConnect(s string) (listener.Conn, error) {
 // 注意:
 //
 //	Options.Heartbeat == 0 时不启动计时器，由业务层直接调用Heartbeat
-func (cos *Cosnet) daemon(ctx context.Context) {
+func (cos *NetHub) daemon(ctx context.Context) {
 	if cos.heartbeat == 0 {
 		logger.Debug("cosnet heartbeat not start,because heartbeat is zero")
 		return
@@ -333,7 +333,7 @@ func (cos *Cosnet) daemon(ctx context.Context) {
 // 参数:
 //
 //	v: 心跳计数增量
-func (cos *Cosnet) Heartbeat(v int32) {
+func (cos *NetHub) Heartbeat(v int32) {
 	cos.Range(func(socket *Socket) bool {
 		_ = socket.Heartbeat(v)
 		return true

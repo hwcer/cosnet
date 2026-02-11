@@ -10,9 +10,9 @@ import (
 
 var Default = New(Options.Heartbeat)
 
-// NewSocket 创建新socket并自动加入到Sockets管理器
-func NewSocket(conn listener.Conn) (socket *Socket, err error) {
-	return Default.NewSocket(conn)
+// Create 创建新socket并自动加入到默认NetHub管理器
+func Create(conn listener.Conn) (socket *Socket, err error) {
+	return Default.Create(conn)
 }
 
 // onStart 当 cosgo 框架启动时调用

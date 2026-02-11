@@ -7,6 +7,14 @@ import (
 	"github.com/hwcer/cosnet/message"
 )
 
+type SocketType int8
+
+const (
+	SocketTypeNone SocketType = iota
+	SocketTypeClient
+	SocketTypeServer
+)
+
 type Conn interface {
 	net.Conn
 	ReadMessage(Socket, message.Message) error
@@ -27,6 +35,7 @@ type Listener interface {
 
 type Socket interface {
 	Id() uint64
+	Type() SocketType
 	Data() *session.Data
 	Conn() Conn
 	Send(flag message.Flag, index int32, path string, data any)
