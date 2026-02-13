@@ -261,6 +261,44 @@ func (cos *NetHub) stop() error {
 	return nil
 }
 
+// Address 获取本地服务器地址
+func (cos *NetHub) Address() string {
+	for _, l := range cos.instance {
+		addr := l.Addr()
+		if addr != nil {
+			address := addr.String()
+			// 处理特殊地址格式
+			if ip, port, err := net.SplitHostPort(address); err == nil {
+				switch ip {
+				case "", "0.0.0.0", "127.0.0.1", "localhost":
+					// 获取内网地址
+					if localIP := getLocalIP(); localIP != "" {
+						return net.JoinHostPort(localIP, port)
+					}
+				}
+				return address
+			}
+		}
+	}
+	return ""
+}
+
+// getLocalIP 获取本地内网IP地址
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+			if ipNet.IP.To4() != nil {
+				return ipNet.IP.String()
+			}
+		}
+	}
+	return ""
+}
+
 // Connect 连接服务器address
 func (cos *NetHub) Connect(address string) (socket *Socket, err error) {
 	conn, err := cos.tryConnect(address)
