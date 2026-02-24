@@ -13,8 +13,8 @@ const (
 	FlagIsFragment                   // 分片包
 )
 
-func (f *Flag) Has(t Flag) bool {
-	return *f&t > 0
+func (f Flag) Has(t Flag) bool {
+	return f&t > 0
 }
 
 // Set bit位设置为1

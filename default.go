@@ -9,7 +9,7 @@ import (
 )
 
 // Default 是默认的 Sockets 实例。
-var Default = New(Options.Heartbeat)
+var Default = New()
 
 // Create 创建新 Socket 并自动加入到默认 NetHub 管理器。
 // 参数 conn: 底层网络连接。
@@ -23,7 +23,6 @@ func Create(conn listener.Conn) (socket *Socket, err error) {
 // Start 当 cosgo 框架启动时调用。
 // 返回值: 错误信息，如果启动失败则返回。
 func Start() error {
-	Default.heartbeat = Options.Heartbeat
 	return Default.Start()
 }
 

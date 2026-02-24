@@ -25,7 +25,7 @@ type Socket struct {
 	cwrite    chan message.Message // 写入通道，用于异步发送消息
 	status    int32                // 连接状态：0-正常，1-正在关闭，2-已关闭
 	sockets   *Sockets             // 所属的 Sockets 管理器
-	address   *string              // 客户端模式：连接的服务器地址；服务器模式：nil
+	address   string               // 客户端模式：连接的服务器地址,为空时代表是服务器模式
 	heartbeat int32                // 心跳计数器
 }
 
@@ -39,6 +39,7 @@ const (
 func (sock *Socket) connect(conn listener.Conn) {
 	sock.conn = conn
 	sock.stop = make(chan struct{})
+	sock.status = SocketStatusNone
 	scc.SGO(sock.readMsg)
 	scc.SGO(sock.writeMsg)
 }
@@ -58,38 +59,41 @@ func (sock *Socket) disconnect() bool {
 	close(sock.stop)
 	_ = sock.conn.Close()
 	sock.conn = nil
-	if sock.address != nil {
-		return sock.reconnect() //作为客户端，不触发事件直接尝试重连
-	}
 	sock.Emit(EventTypeDisconnect)
+	if sock.address != "" {
+		return sock.tryReconnect() //作为客户端，不触发事件直接尝试重连
+	}
+	sock.release()
+	return true
+}
+func (sock *Socket) release() {
 	sock.sockets.sockets.Delete(sock.id)
+	atomic.AddInt64(&sock.sockets.count, -1)
 	sock.data = nil
-
 	// 释放通道中的所有消息
 	for {
 		select {
 		case msg, ok := <-sock.cwrite:
 			if !ok {
-				return true
+				return
 			}
 			message.Release(msg)
 		default:
-			return true
+			return
 		}
 	}
 }
 
 // reconnect 断线重连，仅仅作为客户端时自动重连服务器
-func (sock *Socket) reconnect() bool {
-	address := *sock.address
+func (sock *Socket) tryReconnect() bool {
+	address := sock.address
 	logger.Alert("socket reconnect:%s", address)
 	scc.SGO(func(ctx context.Context) {
-		for !scc.Stopped() {
-			if conn, err := sock.sockets.tryConnect(address); err == nil {
-				sock.connect(conn)
-				return
-			}
+		if conn, err := sock.sockets.tryConnect(ctx, address, 0); err == nil {
+			sock.connect(conn)
+			return
 		}
+		sock.release()
 	})
 	return false
 }
@@ -109,7 +113,7 @@ func (sock *Socket) Conn() listener.Conn {
 	return sock.conn
 }
 func (sock *Socket) Type() listener.SocketType {
-	if sock.address != nil {
+	if sock.address != "" {
 		return listener.SocketTypeClient
 	}
 	return listener.SocketTypeServer

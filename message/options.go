@@ -12,18 +12,20 @@ var ErrMsgDataSizeTooLong = errors.New("message data too long")
 var ErrMsgHeadNotSetTransform = errors.New("code mode, please set the message transform first")
 
 var Options = struct {
-	Pool        bool //是否启用消息池 message pool
-	Capacity    int  //message []byte 默认长度
-	MaxDataSize int32
-	S2CConfirm  string //确认包协议，默认原路返回(和请求时一致)
-	New         func() Message
-	Head        func() []byte //包头
+	Pool             bool //是否启用消息池 message pool
+	Capacity         int  //message []byte 默认长度
+	MaxDataSize      int32
+	AutoCompressSize int32  //自动压缩的阈值，超过此大小的消息会被自动压缩, 0 表示不压缩
+	S2CConfirm       string //确认包协议，默认原路返回(和请求时一致)
+	New              func() Message
+	Head             func() []byte //包头
 }{
-	Pool:        true,
-	Capacity:    1024,
-	MaxDataSize: 1024 * 1024,
-	New:         func() Message { return &message{} },
-	Head:        func() []byte { return make([]byte, messageHeadSize) },
+	Pool:             true,
+	Capacity:         1024,
+	MaxDataSize:      1024 * 1024,
+	AutoCompressSize: 1024 * 100, //超过 1KB 自动压缩
+	New:              func() Message { return &message{} },
+	Head:             func() []byte { return make([]byte, messageHeadSize) },
 }
 
 type Message interface {

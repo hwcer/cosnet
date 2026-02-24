@@ -3,8 +3,7 @@ package cosnet
 // RegistryMethod 注册方法名称，默认为"TCP"
 const RegistryMethod = "TCP"
 
-// Options 配置选项结构体
-var Options = struct {
+type Config struct {
 	// Heartbeat 服务器心跳间隔，单位秒，用来检测玩家僵尸连接
 	Heartbeat int32
 	// WriteChanSize 写通道缓存大小
@@ -15,18 +14,23 @@ var Options = struct {
 	SocketConnectTime int32
 	// SocketReplacedTime 顶号延时关闭时间，单位秒
 	SocketReplacedTime int32
-	// AutoCompressSize 自动压缩的阈值，超过此大小的消息会被自动压缩
-	AutoCompressSize int32
-	// ClientReconnectMax 断线重连最大尝试次数
+
+	// ClientReconnectMax 断线重连最大尝试次数，0 表示无限尝试
 	ClientReconnectMax int32
-	// ClientReconnectTime 断线重连每次等待时间，单位毫秒，实际等待时间为 ClientReconnectTime * 重连次数
+	// ClientReconnectTime 断线重连基础等待时间，单位毫秒，实际等待时间为 ClientReconnectTime * 重连次数
 	ClientReconnectTime int32
-}{
-	Heartbeat:           2,      // 心跳间隔 2 秒
-	WriteChanSize:       100,    // 写通道缓存 100 条消息
-	ConnectMaxSize:      100000, // 最大连接数 10 万
-	SocketConnectTime:   30,     // 30 秒无动作判断为掉线
-	SocketReplacedTime:  5,      // 顶号后 5 秒关闭旧连接
-	ClientReconnectMax:  1000,   // 最大重连尝试 1000 次
-	ClientReconnectTime: 5000,   // 每次重连等待 5 秒
+	// ClientReconnectMaxDelay 断线重连指数退避的最大等待时间，单位毫秒
+	ClientReconnectMaxDelay int32
+}
+
+// Options 配置选项结构体
+var Options = Config{
+	Heartbeat:               10,     // 心跳间隔 10 秒
+	WriteChanSize:           100,    // 写通道缓存 100 条消息
+	ConnectMaxSize:          100000, // 最大连接数 10 万
+	SocketConnectTime:       30,     // 30 秒无动作判断为掉线
+	SocketReplacedTime:      5,      // 顶号后 5 秒关闭旧连接
+	ClientReconnectMax:      10,     // 最大重连尝试 10 次
+	ClientReconnectTime:     1000,   // 基础重连等待 1 秒（指数退避）
+	ClientReconnectMaxDelay: 30000,  // 最大等待时间 30 秒
 }

@@ -2,6 +2,7 @@ package message
 
 import (
 	"bytes"
+	"compress/gzip"
 	"errors"
 	"io"
 	"strings"
@@ -85,6 +86,10 @@ func (m *message) Write(r io.Reader) (n int, err error) {
 	if n != size {
 		return n, io.ErrShortBuffer
 	}
+	// 解压数据（如果已压缩）
+	if err = m.decompress(); err != nil {
+		return n, err
+	}
 	return
 }
 
@@ -97,7 +102,8 @@ func (m *message) Reset(b []byte) error {
 		return err
 	}
 	m.bytes = b[messageHeadSize:]
-	return nil
+	// 解压数据（如果已压缩）
+	return m.decompress()
 }
 
 // Marshal 将一个对象放入Message.data
@@ -142,6 +148,9 @@ func (m *message) Marshal(magic byte, flag Flag, index int32, path string, body 
 	}
 	m.bytes = buffer.Bytes()
 	m.size = int32(len(m.bytes))
+
+	// 自动压缩
+	m.compress()
 	return nil
 }
 
@@ -153,6 +162,48 @@ func (m *message) Unmarshal(i any) (err error) {
 	}
 	return bi.Unmarshal(m.Body(), i)
 }
+
+// decompress 解压 gzip 压缩的数据，如果未压缩则直接返回
+func (m *message) decompress() error {
+	if !m.Head.Flag().Has(FlagCompressed) {
+		return nil
+	}
+	gr, err := gzip.NewReader(bytes.NewReader(m.bytes))
+	if err != nil {
+		return err
+	}
+	defer gr.Close()
+	decompressed, err := io.ReadAll(gr)
+	if err != nil {
+		return err
+	}
+	m.bytes = decompressed
+	m.size = int32(len(m.bytes))
+	return nil
+}
+
+// compress 自动压缩数据，超过阈值时使用 gzip 压缩
+func (m *message) compress() {
+	if Options.AutoCompressSize <= 0 || m.size <= Options.AutoCompressSize {
+		return
+	}
+	f := m.Head.Flag()
+	if f.Has(FlagCompressed) {
+		return
+	}
+	var compressed bytes.Buffer
+	gw := gzip.NewWriter(&compressed)
+	if _, err := gw.Write(m.bytes); err != nil {
+		return
+	}
+	if err := gw.Close(); err != nil {
+		return
+	}
+	m.bytes = compressed.Bytes()
+	m.size = int32(len(m.bytes))
+	f.Set(FlagCompressed)
+}
+
 func (m *message) Confirm() string {
 	var p string
 	if Options.S2CConfirm != "" {

@@ -35,29 +35,29 @@ func Matcher(r io.Reader) bool {
 }
 
 // New 创建一个新的 Sockets 管理器。
-// 参数 heartbeat: 心跳间隔（秒）。
 // 返回值: Sockets 管理器实例。
-func New(heartbeat int32) *Sockets {
+func New() *Sockets {
 	ss := &Sockets{
-		index:     0,
-		sockets:   syncmap.Map{},
-		emitter:   make(map[EventType][]EventsFunc),
-		instance:  make([]listener.Listener, 0),
-		heartbeat: heartbeat,
-		Registry:  registry.New(),
+		index:    0,
+		sockets:  syncmap.Map{},
+		emitter:  make(map[EventType][]EventsFunc),
+		instance: make([]listener.Listener, 0),
+		Options:  Options,
+		Registry: registry.New(),
 	}
 	return ss
 }
 
 // Sockets 管理 Socket 连接的集合，包含服务器和客户端功能。
 type Sockets struct {
-	index     uint64                     // Socket 索引计数器
-	started   atomic.Bool                // 是否已启动
-	sockets   syncmap.Map                // 存储所有 Socket 连接
-	emitter   map[EventType][]EventsFunc // 事件监听器映射
-	instance  []listener.Listener        // 监听器实例列表
-	heartbeat int32                      // 心跳间隔（秒）
-	Registry  *registry.Registry         // 消息处理器注册器
+	index    uint64                     // Socket 索引计数器
+	count    int64                      // 当前连接数
+	started  atomic.Bool                // 是否已启动
+	sockets  syncmap.Map                // 存储所有 Socket 连接
+	emitter  map[EventType][]EventsFunc // 事件监听器映射
+	instance []listener.Listener        // 监听器实例列表
+	Options  Config                     // 配置选项
+	Registry *registry.Registry         // 消息处理器注册器
 }
 
 // Create 创建新 Socket 并自动加入到 Sockets 管理器。
@@ -69,11 +69,21 @@ func (ss *Sockets) Create(conn listener.Conn) (socket *Socket, err error) {
 	if scc.Stopped() {
 		return nil, errors.New("server closed")
 	}
+	// 检查最大连接数
+	if ss.Options.ConnectMaxSize > 0 {
+		count := atomic.LoadInt64(&ss.count)
+		if count >= int64(ss.Options.ConnectMaxSize) {
+			_ = conn.Close()
+			return nil, fmt.Errorf("max connections %d reached", ss.Options.ConnectMaxSize)
+		}
+	}
+
 	socket = &Socket{sockets: ss}
 	socket.id = atomic.AddUint64(&ss.index, 1)
-	socket.cwrite = make(chan message.Message, Options.WriteChanSize)
+	socket.cwrite = make(chan message.Message, ss.Options.WriteChanSize)
 	socket.connect(conn)
 	ss.sockets.Store(socket.id, socket)
+	atomic.AddInt64(&ss.count, 1)
 	ss.Emit(EventTypeConnected, socket)
 	return
 }
@@ -288,48 +298,74 @@ func (ss *Sockets) Address() string {
 //   - socket: 连接的 Socket 实例
 //   - err: 错误信息
 func (ss *Sockets) Connect(address string) (socket *Socket, err error) {
-	conn, err := ss.tryConnect(address)
+	ctx, cancel := scc.WithCancel()
+	defer cancel()
+	conn, err := ss.tryConnect(ctx, address, 0)
 	if err != nil {
 		return nil, err
 	}
 	socket, err = ss.Create(conn)
 	if err == nil {
-		socket.address = &address
+		socket.address = address
 	}
 	return
 }
 
-// tryConnect 尝试连接到指定地址。
-// 参数 s: 地址字符串。
+// tryConnect 尝试连接服务器，支持指数退避和 context 取消。
+// 参数:
+//   - ctx: 上下文，用于控制退出
+//   - s: 服务器地址
+//   - tryCount: 当前重试次数
+//
 // 返回值:
 //   - conn: 连接对象
 //   - err: 错误信息
-func (ss *Sockets) tryConnect(s string) (listener.Conn, error) {
+func (ss *Sockets) tryConnect(ctx context.Context, s string, tryCount int32) (listener.Conn, error) {
 	address := utils.NewAddress(s)
 	if address.Scheme == "" {
 		address.Scheme = "tcp"
 	}
 	rs := address.String()
-	for try := int32(0); try < Options.ClientReconnectMax; try++ {
-		conn, err := net.DialTimeout(address.Scheme, rs, time.Second)
-		if err == nil {
-			return tcp.NewConn(conn), nil
-		}
-		logger.Debug("try connect server[%d],error:%v", try, err)
-		time.Sleep(time.Duration(Options.ClientReconnectTime))
+
+	// 检查最大重试次数
+	if ss.Options.ClientReconnectMax > 0 && tryCount >= ss.Options.ClientReconnectMax {
+		return nil, fmt.Errorf("max retry %d reached", ss.Options.ClientReconnectMax)
 	}
-	return nil, fmt.Errorf("failed to dial %v", rs)
+
+	conn, err := net.DialTimeout(address.Scheme, rs, time.Second)
+	if err == nil {
+		return tcp.NewConn(conn), nil
+	}
+
+	logger.Debug("try connect server[%d],error:%v", tryCount, err)
+
+	// 指数退避计算
+	delay := ss.Options.ClientReconnectTime * (tryCount + 1)
+	if ss.Options.ClientReconnectMaxDelay > 0 && delay > ss.Options.ClientReconnectMaxDelay {
+		delay = ss.Options.ClientReconnectMaxDelay
+	}
+
+	// 使用定时器等待，支持 context 取消
+	timer := time.NewTimer(time.Duration(delay) * time.Millisecond)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return ss.tryConnect(ctx, s, tryCount+1)
+	}
 }
 
 // daemon 启动协程定时清理无效用户。
 // 参数 ctx: 上下文，用于控制协程退出。
 // 注意: Options.Heartbeat == 0 时不启动计时器，由业务层直接调用 Heartbeat。
 func (ss *Sockets) daemon(ctx context.Context) {
-	if ss.heartbeat == 0 {
+	if ss.Options.Heartbeat == 0 {
 		logger.Debug("sockets heartbeat not start,because heartbeat is zero")
 		return
 	}
-	t := time.Second * time.Duration(ss.heartbeat)
+	t := time.Second * time.Duration(ss.Options.Heartbeat)
 	ticker := time.NewTimer(t)
 	defer ticker.Stop()
 	for {
@@ -337,7 +373,7 @@ func (ss *Sockets) daemon(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ss.Heartbeat(ss.heartbeat)
+			ss.Heartbeat(ss.Options.Heartbeat)
 			ticker.Reset(t)
 		}
 	}
