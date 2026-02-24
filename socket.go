@@ -15,24 +15,25 @@ import (
 	"github.com/hwcer/logger"
 )
 
-// Socket 基础网络连接
+// Socket 表示一个网络连接，封装了底层的网络连接和会话数据。
 type Socket struct {
-	id        uint64
-	conn      listener.Conn
-	data      *session.Data        //登录后绑定的用户信息
-	stop      chan struct{}        //关闭标记
-	magic     byte                 //使用的魔法数字
-	cwrite    chan message.Message //写入通道,仅仅强制关闭的会被CLOSE
-	status    int32                // 1--正在关闭(等待通道中的消息全部发送完毕)  2-已经关闭
-	cosnet    *NetHub
-	address   *string //作为客户端时，连接的服务器地址,为空时被视为服务器端socket
-	heartbeat int32
+	id        uint64               // 唯一标识符
+	conn      listener.Conn        // 底层网络连接
+	data      *session.Data        // 登录后绑定的用户会话数据
+	stop      chan struct{}        // 关闭信号通道
+	magic     byte                 // 消息魔数，用于消息格式识别
+	cwrite    chan message.Message // 写入通道，用于异步发送消息
+	status    int32                // 连接状态：0-正常，1-正在关闭，2-已关闭
+	sockets   *Sockets             // 所属的 Sockets 管理器
+	address   *string              // 客户端模式：连接的服务器地址；服务器模式：nil
+	heartbeat int32                // 心跳计数器
 }
 
+// Socket 状态常量。
 const (
-	SocketStatusNone    int32 = 0
-	SocketStatusClosing int32 = 1
-	SocketStatusClosed  int32 = 2
+	SocketStatusNone    int32 = 0 // 正常状态
+	SocketStatusClosing int32 = 1 // 正在关闭（等待通道中的消息发送完毕）
+	SocketStatusClosed  int32 = 2 // 已关闭
 )
 
 func (sock *Socket) connect(conn listener.Conn) {
@@ -61,7 +62,7 @@ func (sock *Socket) disconnect() bool {
 		return sock.reconnect() //作为客户端，不触发事件直接尝试重连
 	}
 	sock.Emit(EventTypeDisconnect)
-	sock.cosnet.sockets.Delete(sock.id)
+	sock.sockets.sockets.Delete(sock.id)
 	sock.data = nil
 
 	// 释放通道中的所有消息
@@ -84,7 +85,7 @@ func (sock *Socket) reconnect() bool {
 	logger.Alert("socket reconnect:%s", address)
 	scc.SGO(func(ctx context.Context) {
 		for !scc.Stopped() {
-			if conn, err := sock.cosnet.tryConnect(address); err == nil {
+			if conn, err := sock.sockets.tryConnect(address); err == nil {
 				sock.connect(conn)
 				return
 			}
@@ -102,7 +103,7 @@ func (sock *Socket) Data() *session.Data {
 }
 
 func (sock *Socket) Emit(e EventType, args ...any) {
-	sock.cosnet.Emit(e, sock, args...)
+	sock.sockets.Emit(e, sock, args...)
 }
 func (sock *Socket) Conn() listener.Conn {
 	return sock.conn
@@ -114,12 +115,12 @@ func (sock *Socket) Type() listener.SocketType {
 	return listener.SocketTypeServer
 }
 
-func (sock *Socket) NetHub() *NetHub {
-	return sock.cosnet
+func (sock *Socket) Sockets() *Sockets {
+	return sock.sockets
 }
 
-// Close 强制关闭,无法重连
-// delay 延时关闭，单位秒
+// Close 强制关闭 Socket，关闭后不会自动重连。
+// 参数 delay: 延时关闭时间（秒），可选。
 func (sock *Socket) Close(delay ...int32) {
 	if !atomic.CompareAndSwapInt32(&sock.status, SocketStatusNone, SocketStatusClosing) {
 		return
@@ -130,7 +131,10 @@ func (sock *Socket) Close(delay ...int32) {
 	}
 }
 
-// Authentication 身份认证
+// Authentication 进行身份认证，绑定用户会话数据。
+// 参数:
+//   - v: 用户会话数据
+//   - reconnect: 是否为重连，可选
 func (sock *Socket) Authentication(v *session.Data, reconnect ...bool) {
 	sock.data = v
 	var r bool
@@ -143,18 +147,19 @@ func (sock *Socket) Authentication(v *session.Data, reconnect ...bool) {
 	}
 }
 
-// Replaced 被顶号
+// Replaced 处理被顶号（同一账号在其他地方登录）。
+// 参数 ip: 新登录的 IP 地址。
 func (sock *Socket) Replaced(ip string) {
 	sock.Emit(EventTypeReplaced, ip)
-	sock.data = nil //取消与角色关联，避免触发角色的掉线事件
+	sock.data = nil // 取消与角色关联，避免触发角色的掉线事件
 	sock.Close(Options.SocketReplacedTime)
 }
 
 func (sock *Socket) Errorf(format any, args ...any) {
-	sock.cosnet.Errorf(sock, format, args...)
+	sock.sockets.Errorf(sock, format, args...)
 }
 
-// KeepAlive 任何行为都清空heartbeat
+// KeepAlive 重置心跳计数器，表示连接活跃。
 func (sock *Socket) KeepAlive() {
 	if sock.status == SocketStatusNone {
 		sock.heartbeat = 0
@@ -194,7 +199,9 @@ func (sock *Socket) Send(flag message.Flag, index int32, path string, data any) 
 	}
 }
 
-// Async 异步写入数据
+// Async 异步写入消息到发送通道。
+// 参数 m: 要发送的消息。
+// 返回值: 发送完成信号通道，关闭表示消息已加入发送队列。
 func (sock *Socket) Async(m message.Message) (s chan struct{}) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -206,26 +213,30 @@ func (sock *Socket) Async(m message.Message) (s chan struct{}) {
 		defer func() {
 			close(s)
 		}()
-		if sock.Alive() {
+		if sock.IsReady() {
 			sock.cwrite <- m
 		}
 	}()
 	return
 }
 
-// Write 外部写入消息,慎用,注意发送失败时消息回收,参考Send
+// Write 将消息写入发送通道。
+// 参数 m: 要发送的消息。
+// 注意: 慎用，注意发送失败时消息回收，参考 Send 方法。
 func (sock *Socket) Write(m message.Message) {
 	defer func() {
 		if e := recover(); e != nil {
 			logger.Error(e)
 		}
 	}()
-	if sock.Alive() {
+	if sock.IsReady() {
 		sock.cwrite <- m
 	}
 }
 
-func (sock *Socket) Alive() bool {
+// IsReady 检查 Socket 是否处于可读写状态。
+// 返回值: 如果 Socket 状态正常且已连接则返回 true。
+func (sock *Socket) IsReady() bool {
 	return sock.status == SocketStatusNone && sock.conn != nil
 }
 
@@ -269,7 +280,7 @@ func (sock *Socket) handle(socket *Socket, msg message.Message) {
 		socket.Errorf("message path error code:%d error:%v", msg.Code(), err)
 		return
 	}
-	node, _ := sock.cosnet.Registry.Search(RegistryMethod, path)
+	node, _ := sock.sockets.Registry.Search(RegistryMethod, path)
 	if node == nil {
 		socket.Emit(EventTypeMessage, msg)
 		return
@@ -312,21 +323,16 @@ func (sock *Socket) writeMsgTrue(msg message.Message) {
 	}
 }
 
-// doHeartbeat 执行单个连接的心跳检查
-// 每一次Heartbeat()调用，heartbeat计数加1
-// 参数:
-//
-//	v: 心跳计数增量
+// Heartbeat 执行心跳检测，检查连接是否超时。
+// 参数 v: 心跳计数增量。
+// 返回值: 当前心跳计数。
 func (sock *Socket) Heartbeat(v int32) int32 {
 	// 如果设置了连接超时时间，并且心跳计数超过了超时时间，则断开连接
 	sock.heartbeat += v
 	if Options.SocketConnectTime > 0 && sock.heartbeat > Options.SocketConnectTime {
 		sock.disconnect()
+	} else {
+		sock.Emit(EventTypeHeartbeat, v)
 	}
 	return sock.heartbeat
 }
-
-//func (sock *Socket) Heartbeat(v int32) int32 {
-//	sock.heartbeat += v
-//	return sock.heartbeat
-//}

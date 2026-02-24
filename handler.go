@@ -8,88 +8,67 @@ import (
 	"github.com/hwcer/logger"
 )
 
-// handleCaller 处理器调用接口，用于自定义调用逻辑
+// handleCaller 定义处理器调用接口，用于自定义调用逻辑。
 type handleCaller interface {
-	// Caller 调用方法，处理请求并返回响应
+	// Caller 调用方法，处理请求并返回响应。
 	// 参数:
-	//   node: 注册的节点
-	//   c: 上下文
-	// 返回值:
-	//   响应数据
+	//   - node: 注册的节点
+	//   - c: 上下文
+	// 返回值: 响应数据
 	Caller(node *registry.Node, c *Context) any
 }
 
-// HandlerFilter 处理器过滤器类型，用于过滤处理器
-// 参数:
-//
-//	node: 注册的节点
-//
-// 返回值:
-//
-//	是否通过过滤
+// HandlerFilter 定义处理器过滤器类型。
+// 参数 node: 注册的节点。
+// 返回值: 是否通过过滤。
 type HandlerFilter func(node *registry.Node) bool
 
-// HandlerCaller 处理器调用函数类型，用于自定义调用逻辑
+// HandlerCaller 定义处理器调用函数类型。
 // 参数:
+//   - node: 注册的节点
+//   - c: 上下文
 //
-//	node: 注册的节点
-//	c: 上下文
-//
-// 返回值:
-//
-//	响应数据
+// 返回值: 响应数据。
 type HandlerCaller func(node *registry.Node, c *Context) any
 
-// HandlerSerialize 处理器序列化函数类型，用于自定义序列化逻辑
+// HandlerSerialize 定义处理器序列化函数类型。
 // 参数:
-//
-//	c: 上下文
-//	reply: 响应数据
+//   - c: 上下文
+//   - reply: 响应数据
 //
 // 返回值:
-//
-//	序列化后的字节数组和错误信息
+//   - []byte: 序列化后的字节数组
+//   - error: 错误信息
 type HandlerSerialize func(c *Context, reply any) ([]byte, error)
 
-// Handler 消息处理器，用于处理消息和生成响应
+// Handler 消息处理器，用于处理消息和生成响应。
 type Handler struct {
 	filter    HandlerFilter    // 处理器过滤器
 	caller    HandlerCaller    // 处理器调用函数
-	serialize HandlerSerialize // 消息序列化封装,仅仅针对确认包
+	serialize HandlerSerialize // 消息序列化函数，仅针对确认包
 }
 
-// SetCaller 设置处理器调用函数
-// 参数:
-//
-//	caller: 处理器调用函数
+// SetCaller 设置处理器调用函数。
+// 参数 caller: 处理器调用函数。
 func (this *Handler) SetCaller(caller func(node *registry.Node, c *Context) any) {
 	this.caller = caller
 }
 
-// SetFilter 设置处理器过滤器
-// 参数:
-//
-//	filter: 处理器过滤器
+// SetFilter 设置处理器过滤器。
+// 参数 filter: 处理器过滤器。
 func (this *Handler) SetFilter(filter func(node *registry.Node) bool) {
 	this.filter = filter
 }
 
-// SetSerialize 设置序列化函数
-// 参数:
-//
-//	serialize: 序列化函数
+// SetSerialize 设置序列化函数。
+// 参数 serialize: 序列化函数。
 func (this *Handler) SetSerialize(serialize func(c *Context, reply any) ([]byte, error)) {
 	this.serialize = serialize
 }
 
-// Filter 过滤处理器
-// 参数:
-//
-//	node: 注册的节点
-//
-// 返回值:
-//
-//	是否通过过滤
+// Filter 过滤处理器。
+// 参数 node: 注册的节点。
+// 返回值: 是否通过过滤。
 func (this *Handler) Filter(node *registry.Node) bool {
 	if this.filter != nil {
 		return this.filter(node)
@@ -112,15 +91,12 @@ func (this *Handler) Filter(node *registry.Node) bool {
 	}
 }
 
-// handle 处理消息
+// handle 处理消息。
 // 参数:
+//   - node: 注册的节点
+//   - c: 上下文
 //
-//	node: 注册的节点
-//	c: 上下文
-//
-// 返回值:
-//
-//	响应数据
+// 返回值: 响应数据。
 func (this *Handler) handle(node *registry.Node, c *Context) (reply any) {
 	if this.caller != nil {
 		return this.caller(node, c)
@@ -137,15 +113,12 @@ func (this *Handler) handle(node *registry.Node, c *Context) (reply any) {
 	return
 }
 
-// reply 写入响应
+// reply 写入响应。
 // 参数:
+//   - c: 上下文
+//   - reply: 响应数据
 //
-//	c: 上下文
-//	reply: 响应数据
-//
-// 返回值:
-//
-//	错误信息
+// 返回值: 错误信息。
 func (this *Handler) reply(c *Context, reply any) (err error) {
 	flag := c.Message.Flag()
 	if !flag.Has(message.FlagNeedACK) {
@@ -174,15 +147,14 @@ func (this *Handler) reply(c *Context, reply any) (err error) {
 	return
 }
 
-// defaultSerialize 默认序列化方法
+// defaultSerialize 默认序列化方法。
 // 参数:
-//
-//	c: 上下文
-//	reply: 响应数据
+//   - c: 上下文
+//   - reply: 响应数据
 //
 // 返回值:
-//
-//	序列化后的字节数组和错误信息
+//   - []byte: 序列化后的字节数组
+//   - error: 错误信息
 func (this *Handler) defaultSerialize(c *Context, reply any) ([]byte, error) {
 	b := c.Message.Binder()
 	return b.Marshal(reply)
