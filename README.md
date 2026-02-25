@@ -19,10 +19,10 @@ cosnet/
 ├── listener/          # 监听器接口定义
 │   └── define.go
 ├── message/           # 消息处理相关
+│   ├── flag.go        # 消息标志位定义
 │   ├── head.go        # 消息头处理
 │   ├── magic.go       # 魔术数字定义
 │   ├── message.go     # 消息结构实现
-│   ├── message_test.go # 消息测试
 │   ├── options.go     # 消息选项
 │   ├── pool.go        # 消息池
 │   └── transform.go   # 消息转换
@@ -31,20 +31,22 @@ cosnet/
 │   └── listener.go    # TCP 监听器
 ├── udp/               # UDP 实现
 │   ├── conn.go        # UDP 连接
-│   └── listener.go    # UDP 监听器
+│   ├── listener.go    # UDP 监听器
+│   └── options.go     # UDP 选项
 ├── wss/               # WebSocket 实现
 │   ├── conn.go        # WebSocket 连接
-│   └── listener.go    # WebSocket 监听器
+│   ├── listener.go    # WebSocket 监听器
+│   ├── options.go     # WebSocket 选项
+│   └── socket.io.go   # Socket.IO 支持
 ├── context.go         # 上下文
-├── cosnet.go          # 核心功能
+├── default.go         # 默认实例
 ├── events.go          # 事件系统
 ├── go.mod             # 依赖管理
 ├── go.sum             # 依赖校验
 ├── handler.go         # 消息处理器
-├── heartbeat.go       # 心跳机制
 ├── options.go         # 选项配置
-├── server.go          # 服务器实现
-└── socket.go          # Socket 实现
+├── socket.go          # Socket 实现
+└── sockets.go         # Sockets 管理器
 ```
 
 ## 安装
@@ -151,8 +153,14 @@ func main() {
 
 ### Socket 相关
 
-- **`(sock *Socket) Send(index int32, path string, data any)`**：
-  发送消息到客户端
+- **`(sock *Socket) Send(flag message.Flag, index int32, path string, data any) error`**：
+  发送消息到客户端，返回错误信息
+
+- **`(sock *Socket) Write(m message.Message) error`**：
+  直接写入消息到发送通道，返回错误信息
+
+- **`(sock *Socket) Async(m message.Message) *SocketAsyncResult`**：
+  异步写入消息，返回结果对象，可通过 `Wait()` 方法获取错误
 
 - **`(sock *Socket) Close(delay ...int32)`**：
   关闭连接
@@ -197,22 +205,26 @@ cosnet.On(cosnet.EventTypeDisconnect, func(socket *cosnet.Socket, data any) {
 cosnet 提供了以下配置选项：
 
 ```go
-var Options = struct {
-    Heartbeat           int32 // 服务器心跳间隔，单位秒
-    WriteChanSize       int32 // 写通道缓存大小
-    ConnectMaxSize      int32 // 最大连接人数
-    SocketConnectTime   int32 // 没有动作被判断为掉线的时间，单位秒
-    SocketReplacedTime  int32 // 顶号延时关闭时间，单位秒
-    ClientReconnectMax  int32 // 断线重连最大尝试次数
-    ClientReconnectTime int32 // 断线重连每次等待时间，单位毫秒
-}{
-    Heartbeat:          2,           // 心跳间隔 2 秒
-    WriteChanSize:      100,         // 写通道缓存 100 条消息
-    ConnectMaxSize:     100000,      // 最大连接数 10 万
-    SocketConnectTime:  30,          // 30 秒无动作判断为掉线
-    SocketReplacedTime: 5,           // 顶号后 5 秒关闭旧连接
-    ClientReconnectMax:  1000,       // 最大重连尝试 1000 次
-    ClientReconnectTime: 5000,       // 每次重连等待 5 秒
+type Config struct {
+    Heartbeat               int32 // 服务器心跳间隔，单位秒
+    WriteChanSize           int32 // 写通道缓存大小
+    ConnectMaxSize          int32 // 最大连接人数
+    SocketConnectTime       int32 // 没有动作被判断为掉线的时间，单位秒
+    SocketReplacedTime      int32 // 顶号延时关闭时间，单位秒
+    ClientReconnectMax      int32 // 断线重连最大尝试次数，0 表示无限尝试
+    ClientReconnectTime     int32 // 断线重连基础等待时间，单位毫秒，实际等待时间为指数退避
+    ClientReconnectMaxDelay int32 // 断线重连指数退避的最大等待时间，单位毫秒
+}
+
+var Options = Config{
+    Heartbeat:               10,     // 心跳间隔 10 秒
+    WriteChanSize:           100,    // 写通道缓存 100 条消息
+    ConnectMaxSize:          100000, // 最大连接数 10 万
+    SocketConnectTime:       30,     // 30 秒无动作判断为掉线
+    SocketReplacedTime:      5,      // 顶号后 5 秒关闭旧连接
+    ClientReconnectMax:      10,     // 最大重连尝试 10 次
+    ClientReconnectTime:     1000,   // 基础重连等待 1 秒（指数退避）
+    ClientReconnectMaxDelay: 30000,  // 最大等待时间 30 秒
 }
 ```
 

@@ -81,10 +81,10 @@ func (ss *Sockets) Create(conn listener.Conn) (socket *Socket, err error) {
 	socket = &Socket{sockets: ss}
 	socket.id = atomic.AddUint64(&ss.index, 1)
 	socket.cwrite = make(chan message.Message, ss.Options.WriteChanSize)
-	socket.connect(conn)
+	socket.status = SocketStatusNone
 	ss.sockets.Store(socket.id, socket)
 	atomic.AddInt64(&ss.count, 1)
-	ss.Emit(EventTypeConnected, socket)
+	socket.connect(conn)
 	return
 }
 

@@ -29,10 +29,12 @@ func (m *message) Path() (r, q string, err error) {
 			err = ErrMsgHeadIllegal
 			return
 		}
-		r = string(m.bytes[4 : int(code)+4])
-		if i := strings.Index(r, "?"); i >= 0 {
-			r = r[:i]
-			q = r[i+1:]
+		path := string(m.bytes[4 : int(code)+4])
+		if i := strings.Index(path, "?"); i >= 0 {
+			r = path[:i]
+			q = path[i+1:]
+		} else {
+			r = path
 		}
 	} else {
 		r, err = Transform.Path(code)
