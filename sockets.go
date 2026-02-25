@@ -122,6 +122,19 @@ func (ss *Sockets) Service(name ...string) *registry.Service {
 	service.SetMethods([]string{RegistryMethod})
 	return service
 }
+func (ss *Sockets) Handler(name ...string) *Handler {
+	var s string
+	if len(name) > 0 {
+		s = name[0]
+	}
+	service := ss.Registry.Service(s)
+	hs := service.GetHandler()
+	if hs == nil {
+		hs = &Handler{}
+		service.SetHandler(hs)
+	}
+	return hs.(*Handler)
+}
 
 // Register 使用默认 Service 注册接口。
 // 参数:
