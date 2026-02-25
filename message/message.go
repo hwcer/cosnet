@@ -54,18 +54,27 @@ func (m *message) Body() []byte {
 func (m *message) Bytes(w io.Writer, includeHeader bool) (n int, err error) {
 	var r int
 	size := m.Size()
+	compressed := false
 	if includeHeader {
-		head := m.Head.bytes()
-		if r, err = w.Write(head); err == nil {
-			n += r
-		} else {
+		var head []byte
+		head, compressed = m.Head.bytes()
+		if r, err = w.Write(head); err != nil {
 			return
 		}
-	}
-	if size > 0 {
-		r, err = w.Write(m.bytes[0:size])
 		n += r
+	} else {
+		compressed = Options.AutoCompressSize > 0 && size > Options.AutoCompressSize && !m.Head.flag.Has(FlagCompressed)
 	}
+	if size == 0 {
+		return
+	}
+	// 写入数据体
+	if compressed {
+		r, err = m.compress(w)
+	} else {
+		r, err = w.Write(m.bytes)
+	}
+	n += r
 	return
 }
 
@@ -148,9 +157,6 @@ func (m *message) Marshal(magic byte, flag Flag, index int32, path string, body 
 	}
 	m.bytes = buffer.Bytes()
 	m.size = int32(len(m.bytes))
-
-	// 自动压缩
-	m.compress()
 	return nil
 }
 
@@ -165,7 +171,7 @@ func (m *message) Unmarshal(i any) (err error) {
 
 // decompress 解压 gzip 压缩的数据，如果未压缩则直接返回
 func (m *message) decompress() error {
-	if !m.Head.Flag().Has(FlagCompressed) {
+	if !m.Head.flag.Has(FlagCompressed) {
 		return nil
 	}
 	gr, err := gzip.NewReader(bytes.NewReader(m.bytes))
@@ -179,29 +185,22 @@ func (m *message) decompress() error {
 	}
 	m.bytes = decompressed
 	m.size = int32(len(m.bytes))
+	m.Head.flag.Delete(FlagCompressed)
 	return nil
 }
 
-// compress 自动压缩数据，超过阈值时使用 gzip 压缩
-func (m *message) compress() {
-	if Options.AutoCompressSize <= 0 || m.size <= Options.AutoCompressSize {
-		return
-	}
-	f := m.Head.Flag()
-	if f.Has(FlagCompressed) {
-		return
-	}
-	var compressed bytes.Buffer
-	gw := gzip.NewWriter(&compressed)
-	if _, err := gw.Write(m.bytes); err != nil {
-		return
+// compress 压缩数据并直接写入 writer
+// 注意：此方法不修改 m.bytes，保持原始数据未压缩状态
+func (m *message) compress(w io.Writer) (int, error) {
+	gw := gzip.NewWriter(w)
+	n, err := gw.Write(m.bytes)
+	if err != nil {
+		return n, err
 	}
 	if err := gw.Close(); err != nil {
-		return
+		return n, err
 	}
-	m.bytes = compressed.Bytes()
-	m.size = int32(len(m.bytes))
-	f.Set(FlagCompressed)
+	return n, nil
 }
 
 func (m *message) Confirm() string {

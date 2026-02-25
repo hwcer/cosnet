@@ -50,14 +50,25 @@ func (h *Head) Parse(head []byte) error {
 	}
 	return nil
 }
-func (h *Head) bytes() []byte {
+
+// bytes 生成二进制头，返回头部数据和是否启用压缩
+func (h *Head) bytes() ([]byte, bool) {
 	magic := h.Magic()
 	head := make([]byte, messageHeadSize)
 	head[0] = h.magic
-	head[1] = uint8(h.flag)                             // 写入 tags 字段
+	flag := h.flag
+
+	// 检查是否需要添加压缩标记
+	compressed := false
+	if Options.AutoCompressSize > 0 && h.size > Options.AutoCompressSize && !flag.Has(FlagCompressed) {
+		flag.Set(FlagCompressed)
+		compressed = true
+	}
+
+	head[1] = uint8(flag)                               // 写入 tags 字段
 	magic.Binary.PutUint32(head[2:6], uint32(h.size))   // 调整 size 字段位置
 	magic.Binary.PutUint32(head[6:10], uint32(h.index)) // 调整 index 字段位置
-	return head
+	return head, compressed
 }
 
 func (h *Head) format(magic byte, flag Flag, index int32) (err error) {
