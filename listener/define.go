@@ -47,7 +47,7 @@ type Socket interface {
 	// Conn 返回底层网络连接。
 	Conn() Conn
 	// Send 发送消息到对端。
-	Send(flag message.Flag, index int32, path string, data any) error
+	Send(flag message.Flag, index int32, path string, data any, safe ...bool) error
 	// Errorf 记录错误日志。
 	Errorf(format any, args ...any)
 	// LocalAddr 返回本地网络地址。

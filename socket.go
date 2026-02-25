@@ -231,7 +231,7 @@ func (sock *Socket) Magic() byte {
 	return sock.magic
 }
 
-func (sock *Socket) Send(flag message.Flag, index int32, path string, data any) error {
+func (sock *Socket) Send(flag message.Flag, index int32, path string, data any, safe ...bool) error {
 	m := message.Require()
 	magic := sock.magic
 	if magic == 0 {
@@ -241,16 +241,19 @@ func (sock *Socket) Send(flag message.Flag, index int32, path string, data any) 
 		message.Release(m)
 		return fmt.Errorf("socket send marshal error: %w", err)
 	}
-	if err := sock.Write(m); err != nil {
+	if err := sock.Write(m, safe...); err != nil {
 		return fmt.Errorf("socket send write error: %w", err)
 	}
 	return nil
 }
 
 // Async 异步写入消息到发送通道。
-// 参数 m: 要发送的消息。
-// 返回值: 发送完成信号通道，关闭表示消息已加入发送队列。
-func (sock *Socket) Async(m message.Message) (r *SocketAsyncResult) {
+// 参数:
+//   - m: 要发送的消息
+//   - safe: 可选，安全模式（默认 true），为 false 时通道满则丢弃消息
+//
+// 返回值: 发送完成信号通道，关闭表示消息已加入发送队列或发生错误。
+func (sock *Socket) Async(m message.Message, safe ...bool) (r *SocketAsyncResult) {
 	r = &SocketAsyncResult{
 		c: make(chan struct{}),
 	}
@@ -261,20 +264,16 @@ func (sock *Socket) Async(m message.Message) (r *SocketAsyncResult) {
 			}
 			close(r.c)
 		}()
-		if !sock.IsReady() {
-			r.e = fmt.Errorf("socket not ready, status: %d", sock.status)
-			return
-		}
-		sock.cwrite <- m
+		r.e = sock.Write(m, safe...)
 	}()
 	return
 }
 
 // Write 将消息写入发送通道。
 // 参数 m: 要发送的消息。
-// 返回值: 错误信息，如果 Socket 未就绪则返回错误。
+// 返回值: 错误信息，如果 Socket 未就绪或通道已满则返回错误。
 // 注意: 慎用，注意发送失败时消息回收，参考 Send 方法。
-func (sock *Socket) Write(m message.Message) (err error) {
+func (sock *Socket) Write(m message.Message, safe ...bool) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("socket write panic: %v", e)
@@ -283,7 +282,17 @@ func (sock *Socket) Write(m message.Message) (err error) {
 	if !sock.IsReady() {
 		return fmt.Errorf("socket not ready, status: %d", sock.status)
 	}
-	sock.cwrite <- m
+	// safe 模式（默认）：阻塞等待通道可用
+	// 非 safe 模式：通道满时直接丢弃
+	if len(safe) > 0 && !safe[0] {
+		select {
+		case sock.cwrite <- m:
+		default:
+			return fmt.Errorf("socket write channel full")
+		}
+	} else {
+		sock.cwrite <- m
+	}
 	return nil
 }
 
