@@ -23,7 +23,7 @@ var Options = struct {
 	Pool:             true,
 	Capacity:         1024,
 	MaxDataSize:      1024 * 1024,
-	AutoCompressSize: 1024 * 100, //超过 1KB 自动压缩
+	AutoCompressSize: 1024 * 100, //超过 100KB 自动压缩
 	New:              func() Message { return &message{} },
 	Head:             func() []byte { return make([]byte, messageHeadSize) },
 }
