@@ -265,7 +265,7 @@ func (ss *Sockets) Accept(ln listener.Listener) {
 // 返回值: 错误信息，如果启动失败则返回。
 func (ss *Sockets) Start() error {
 	if !ss.started.CompareAndSwap(false, true) {
-		logger.Warn("sockets already started")
+		logger.Debug("sockets already started")
 		return nil
 	}
 	cosgo.On(cosgo.EventTypClosing, ss.stop)
