@@ -100,7 +100,7 @@ func (t *SocketIO) WriteMessage(socket listener.Socket, msg message.Message, b *
 	index := msg.Index()
 
 	var packet string
-	if flag.Has(message.FlagIsACK) {
+	if flag.Has(message.FlagConfirm) {
 		// 当 index > 0 时，发送确认包（ACK）
 		// 格式: "3/index,data"
 		packet = fmt.Sprintf("3/%d,%s", index, string(body))
@@ -238,7 +238,7 @@ func (t *SocketIO) handleEvent(socket listener.Socket, m message.Message, data [
 	}
 	var flag message.Flag
 	if ackId > 0 {
-		flag = message.FlagNeedACK
+		flag = message.FlagACK
 	}
 	// 使用 MagicNumberPathJson 封装消息
 	return m.Marshal(message.MagicNumberPathJson, flag, int32(ackId), eventName, eventData)
@@ -350,7 +350,7 @@ func (t *SocketIO) handleBinaryEvent(socket listener.Socket, m message.Message, 
 
 	var flag message.Flag
 	if ackId > 0 {
-		flag = message.FlagNeedACK
+		flag = message.FlagACK
 	}
 	if err = m.Marshal(message.MagicNumberPathJson, flag, int32(ackId), eventName, eventData); err != nil {
 		return err

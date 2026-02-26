@@ -121,18 +121,18 @@ func (this *Handler) handle(node *registry.Node, c *Context) (reply any) {
 // 返回值: 错误信息。
 func (this *Handler) reply(c *Context, reply any) (err error) {
 	flag := c.Message.Flag()
-	if !flag.Has(message.FlagNeedACK) {
+	if !flag.Has(message.FlagACK) {
 		return
 	}
-	replyFlag := message.FlagIsACK
+	replyFlag := message.FlagConfirm
 	replyIndex := c.Message.Index()
 	replyConfirm := c.Message.Confirm()
 
 	switch v := reply.(type) {
 	case []byte:
-		c.Socket.Send(replyFlag, replyIndex, replyConfirm, v)
+		err = c.Socket.Send(replyFlag, replyIndex, replyConfirm, v)
 	case *[]byte:
-		c.Socket.Send(replyFlag, replyIndex, replyConfirm, *v)
+		err = c.Socket.Send(replyFlag, replyIndex, replyConfirm, *v)
 	default:
 		var data []byte
 		if this.serialize != nil {
@@ -141,7 +141,7 @@ func (this *Handler) reply(c *Context, reply any) (err error) {
 			data, err = this.defaultSerialize(c, reply)
 		}
 		if err == nil {
-			c.Socket.Send(replyFlag, replyIndex, replyConfirm, data)
+			err = c.Socket.Send(replyFlag, replyIndex, replyConfirm, data)
 		}
 	}
 	return
