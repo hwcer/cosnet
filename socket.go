@@ -142,6 +142,12 @@ func (sock *Socket) tryReconnect() bool {
 func (sock *Socket) Id() uint64 {
 	return sock.id
 }
+func (sock *Socket) Is(target *Socket) bool {
+	if target == nil {
+		return false
+	}
+	return sock.id == target.id
+}
 
 func (sock *Socket) Data() *session.Data {
 	return sock.data
