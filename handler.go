@@ -125,6 +125,9 @@ func (this *Handler) reply(c *Context, reply any) (err error) {
 		return
 	}
 	replyFlag := message.FlagConfirm
+	if flag.Has(message.FlagHeartbeat) {
+		replyFlag.Set(message.FlagHeartbeat)
+	}
 	replyIndex := c.Message.Index()
 	replyConfirm := c.Message.Confirm()
 
