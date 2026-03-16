@@ -44,7 +44,6 @@ type Socket struct {
 const (
 
 	//有效状态
-
 	SocketStatusNone      int32 = iota //初始状态，工作协程未启动,处理完初始化程序后转换为 SocketStatusConnected
 	SocketStatusConnected              //SOCKET 已连接，可以正常工作,断开连接时 转换为 SocketStatusDisconnect
 	SocketStatusClosing                // 正在手动关闭（等待通道中的消息发送完毕）
@@ -233,20 +232,30 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	}
 	return nil
 }
-func (sock *Socket) Magic() byte {
+
+// Magic 设置或获取 Socket 的魔数。
+func (sock *Socket) Magic(magic ...byte) byte {
+	if len(magic) > 0 {
+		sock.magic = magic[0]
+	}
 	return sock.magic
 }
 
 func (sock *Socket) Send(flag message.Flag, index int32, path string, data any, safe ...bool) error {
-	m := message.Require()
 	magic := sock.magic
 	if magic == 0 {
-		magic = message.MagicNumberPathJson
+		magic = message.Options.Magic
 	}
+	return sock.SendWithMagic(magic, flag, index, path, data, safe...)
+}
+
+func (sock *Socket) SendWithMagic(magic byte, flag message.Flag, index int32, path string, data any, safe ...bool) error {
+	m := message.Require()
 	if err := m.Marshal(magic, flag, index, path, data); err != nil {
 		message.Release(m)
 		return fmt.Errorf("socket send marshal error: %w", err)
 	}
+	//logger.Debug("SendWithMagic:%d index:%d path:%s", magic, index, path)
 	if err := sock.Write(m, safe...); err != nil {
 		return fmt.Errorf("socket send write error: %w", err)
 	}
@@ -330,9 +339,6 @@ func (sock *Socket) readMsgTrue(msg message.Message) {
 	if magic == nil || magic.Key == 0 {
 		logger.Debug("magic is nil :%v", msg)
 		return //未被初始化的消息
-	}
-	if sock.magic == 0 {
-		sock.magic = magic.Key
 	}
 	sock.handle(sock, msg)
 }

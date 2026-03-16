@@ -130,12 +130,13 @@ func (this *Handler) reply(c *Context, reply any) (err error) {
 	}
 	replyIndex := c.Message.Index()
 	replyConfirm := c.Message.Confirm()
+	replyMagic := c.Message.Magic()
 
 	switch v := reply.(type) {
 	case []byte:
-		err = c.Socket.Send(replyFlag, replyIndex, replyConfirm, v)
+		err = c.Socket.SendWithMagic(replyMagic.Key, replyFlag, replyIndex, replyConfirm, v)
 	case *[]byte:
-		err = c.Socket.Send(replyFlag, replyIndex, replyConfirm, *v)
+		err = c.Socket.SendWithMagic(replyMagic.Key, replyFlag, replyIndex, replyConfirm, *v)
 	default:
 		var data []byte
 		if this.serialize != nil {
@@ -144,7 +145,7 @@ func (this *Handler) reply(c *Context, reply any) (err error) {
 			data, err = this.defaultSerialize(c, reply)
 		}
 		if err == nil {
-			err = c.Socket.Send(replyFlag, replyIndex, replyConfirm, data)
+			err = c.Socket.SendWithMagic(replyMagic.Key, replyFlag, replyIndex, replyConfirm, data)
 		}
 	}
 	return

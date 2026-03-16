@@ -13,6 +13,7 @@ var ErrMsgHeadNotSetTransform = errors.New("code mode, please set the message tr
 
 var Options = struct {
 	Pool             bool //是否启用消息池 message pool
+	Magic            byte //默认魔数
 	Capacity         int  //message []byte 默认长度
 	MaxDataSize      int32
 	AutoCompressSize int32  //自动压缩的阈值，超过此大小的消息会被自动压缩, 0 表示不压缩
@@ -21,6 +22,7 @@ var Options = struct {
 	Head             func() []byte //包头
 }{
 	Pool:             true,
+	Magic:            MagicNumberPathJson,
 	Capacity:         1024,
 	MaxDataSize:      1024 * 1024,
 	AutoCompressSize: 1024 * 100, //超过 100KB 自动压缩
