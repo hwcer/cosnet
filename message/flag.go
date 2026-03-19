@@ -4,8 +4,8 @@ type Flag uint8
 
 // 标志位定义
 const (
-	FlagACK        Flag = 1 << iota // 需要确认
-	FlagConfirm                     // 这是确认包
+	FlagConfirm    Flag = 1 << iota // 这是确认包
+	FlagNoreply                     // 这个包不需要确认
 	FlagHeartbeat                   // 心跳包
 	FlagBroadcast                   // 广播包
 	FlagCompressed                  // 是否压缩

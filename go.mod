@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/gorilla/websocket v1.5.3
-	github.com/hwcer/cosgo v1.7.2-0.20260316095745-f0010a7fe50d
+	github.com/hwcer/cosgo v1.7.2-0.20260319110952-665cbe24038f
 	github.com/hwcer/logger v0.2.8
 	golang.org/x/sync v0.20.0
 )

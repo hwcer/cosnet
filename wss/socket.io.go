@@ -237,8 +237,8 @@ func (t *SocketIO) handleEvent(socket listener.Socket, m message.Message, data [
 		eventData = remainingData
 	}
 	var flag message.Flag
-	if ackId > 0 {
-		flag = message.FlagACK
+	if ackId == 0 {
+		flag = message.FlagNoreply
 	}
 	// 使用 MagicNumberPathJson 封装消息
 	return m.Marshal(message.MagicNumberPathJson, flag, int32(ackId), eventName, eventData)
@@ -349,8 +349,8 @@ func (t *SocketIO) handleBinaryEvent(socket listener.Socket, m message.Message, 
 	// 参考 socket.go 中的 Send 方法
 
 	var flag message.Flag
-	if ackId > 0 {
-		flag = message.FlagACK
+	if ackId == 0 {
+		flag = message.FlagNoreply
 	}
 	if err = m.Marshal(message.MagicNumberPathJson, flag, int32(ackId), eventName, eventData); err != nil {
 		return err

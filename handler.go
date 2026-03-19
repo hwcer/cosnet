@@ -121,8 +121,8 @@ func (this *Handler) handle(node *registry.Node, c *Context) (reply any) {
 // 返回值: 错误信息。
 func (this *Handler) reply(c *Context, reply any) (err error) {
 	flag := c.Message.Flag()
-	if !flag.Has(message.FlagACK) {
-		return
+	if flag.Has(message.FlagConfirm) || flag.Has(message.FlagNoreply) {
+		return //确认包本身和明确不需要回复的响应
 	}
 	replyFlag := message.FlagConfirm
 	if flag.Has(message.FlagHeartbeat) {
