@@ -10,7 +10,7 @@ import (
 const (
 	MagicNumberPathJson  byte = 0xf0
 	MagicNumberCodeJson  byte = 0xf1
-	MagicNumberPathBytes byte = 0xf9
+	MagicNumberCodeProto byte = 0xf2
 )
 
 type MagicType int8
@@ -25,7 +25,7 @@ var Magics = magics{}
 func init() {
 	Magics.Register(MagicNumberPathJson, MagicTypePath, binder.Json, binary.BigEndian)
 	Magics.Register(MagicNumberCodeJson, MagicTypeCode, binder.Json, binary.BigEndian)
-	Magics.Register(MagicNumberPathBytes, MagicTypePath, binder.Bytes, binary.LittleEndian)
+	Magics.Register(MagicNumberCodeProto, MagicTypeCode, binder.Protobuf, binary.BigEndian)
 }
 
 type Magic struct {

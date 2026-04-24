@@ -24,5 +24,5 @@ func (f *Flag) Set(t Flag) {
 
 // Delete bit位设置为0
 func (f *Flag) Delete(t Flag) {
-	*f -= t
+	*f &^= t
 }

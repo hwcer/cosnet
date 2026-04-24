@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 )
@@ -25,7 +26,7 @@ func (m *message) Path() (r, q string, err error) {
 	magic := m.Magic()
 	code := m.Code()
 	if magic.Type == MagicTypePath {
-		if int(code) > len(m.bytes) {
+		if int(code)+4 > len(m.bytes) {
 			err = ErrMsgHeadIllegal
 			return
 		}
@@ -117,8 +118,40 @@ func (m *message) Reset(b []byte) error {
 	return m.decompress()
 }
 
+func (m *message) MarshalPath(magic *Magic, path string) (buffer *bytes.Buffer, err error) {
+	if magic.Type == MagicTypePath {
+		magic.Binary.PutUint32(m.bytes[0:4], uint32(len(path)))
+		buffer = bytes.NewBuffer(m.bytes[0:4])
+		buffer.WriteString(path)
+	} else {
+		var code int32
+		if code, err = Transform.Code(path); err != nil {
+			return
+		}
+		magic.Binary.PutUint32(m.bytes[0:4], uint32(code))
+		buffer = bytes.NewBuffer(m.bytes[0:4])
+	}
+	return
+}
+
+func (m *message) MarshalCode(magic *Magic, code int32) (buffer *bytes.Buffer, err error) {
+	if magic.Type == MagicTypePath {
+		var path string
+		if path, err = Transform.Path(code); err != nil {
+			return
+		}
+		magic.Binary.PutUint32(m.bytes[0:4], uint32(len(path)))
+		buffer = bytes.NewBuffer(m.bytes[0:4])
+		buffer.WriteString(path)
+	} else {
+		magic.Binary.PutUint32(m.bytes[0:4], uint32(code))
+		buffer = bytes.NewBuffer(m.bytes[0:4])
+	}
+	return
+}
+
 // Marshal 将一个对象放入Message.data
-func (m *message) Marshal(magic byte, flag Flag, index int32, path string, body any) (err error) {
+func (m *message) Marshal(magic byte, flag Flag, index int32, path any, body any) (err error) {
 	if err = m.Head.format(magic, flag, index); err != nil {
 		return
 	}
@@ -128,17 +161,26 @@ func (m *message) Marshal(magic byte, flag Flag, index int32, path string, body 
 	}
 
 	var buffer *bytes.Buffer
-	if mc.Type == MagicTypePath {
-		mc.Binary.PutUint32(m.bytes[0:4], uint32(len(path)))
-		buffer = bytes.NewBuffer(m.bytes[0:4])
-		buffer.WriteString(path)
-	} else {
-		var code int32
-		if code, err = Transform.Code(path); err == nil {
-			return err
-		}
-		mc.Binary.PutUint32(m.bytes[0:4], uint32(code))
-		buffer = bytes.NewBuffer(m.bytes[0:4])
+	switch v := path.(type) {
+	case string:
+		buffer, err = m.MarshalPath(mc, v)
+	case int32:
+		buffer, err = m.MarshalCode(mc, v)
+	case int64:
+		buffer, err = m.MarshalCode(mc, int32(v))
+	case int:
+		buffer, err = m.MarshalCode(mc, int32(v))
+	case uint32:
+		buffer, err = m.MarshalCode(mc, int32(v))
+	case uint64:
+		buffer, err = m.MarshalCode(mc, int32(v))
+	case uint:
+		buffer, err = m.MarshalCode(mc, int32(v))
+	default:
+		err = fmt.Errorf("message.Marshal: unsupported path type: %T", path)
+	}
+	if err != nil {
+		return
 	}
 
 	switch v := body.(type) {

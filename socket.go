@@ -241,7 +241,7 @@ func (sock *Socket) Magic(magic ...byte) byte {
 	return sock.magic
 }
 
-func (sock *Socket) Send(flag message.Flag, index int32, path string, data any, safe ...bool) error {
+func (sock *Socket) Send(flag message.Flag, index int32, path any, data any, safe ...bool) error {
 	magic := sock.magic
 	if magic == 0 {
 		magic = message.Options.Magic
@@ -249,7 +249,7 @@ func (sock *Socket) Send(flag message.Flag, index int32, path string, data any, 
 	return sock.SendWithMagic(magic, flag, index, path, data, safe...)
 }
 
-func (sock *Socket) SendWithMagic(magic byte, flag message.Flag, index int32, path string, data any, safe ...bool) error {
+func (sock *Socket) SendWithMagic(magic byte, flag message.Flag, index int32, path any, data any, safe ...bool) error {
 	m := message.Require()
 	if err := m.Marshal(magic, flag, index, path, data); err != nil {
 		message.Release(m)
@@ -257,6 +257,7 @@ func (sock *Socket) SendWithMagic(magic byte, flag message.Flag, index int32, pa
 	}
 	//logger.Debug("SendWithMagic:%d index:%d path:%s", magic, index, path)
 	if err := sock.Write(m, safe...); err != nil {
+		message.Release(m)
 		return fmt.Errorf("socket send write error: %w", err)
 	}
 	return nil
@@ -297,16 +298,22 @@ func (sock *Socket) Write(m message.Message, safe ...bool) (err error) {
 	if !sock.IsReady() {
 		return fmt.Errorf("socket not ready, status: %d", sock.status)
 	}
-	// safe 模式（默认）：阻塞等待通道可用
+	// safe 模式（默认）：阻塞等待通道可用，但监听 stop 避免 socket 关闭后永久阻塞
 	// 非 safe 模式：通道满时直接丢弃
 	if len(safe) > 0 && !safe[0] {
 		select {
 		case sock.cwrite <- m:
+		case <-sock.stop:
+			return fmt.Errorf("socket closed")
 		default:
 			return fmt.Errorf("socket write channel full")
 		}
 	} else {
-		sock.cwrite <- m
+		select {
+		case sock.cwrite <- m:
+		case <-sock.stop:
+			return fmt.Errorf("socket closed")
+		}
 	}
 	return nil
 }
