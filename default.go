@@ -5,7 +5,6 @@ import (
 
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosnet/listener"
-	"github.com/hwcer/cosnet/message"
 )
 
 // Default 是默认的 Sockets 实例。
@@ -78,19 +77,6 @@ func Service(name ...string) *registry.Service {
 func Register(i interface{}, prefix ...string) error {
 	service := Service("")
 	return service.Register(i, prefix...)
-}
-
-// Broadcast 广播消息到默认实例中的所有 Socket。
-// 参数:
-//   - m: 要广播的消息
-//   - filter: 过滤函数，如果不为 nil 且返回 false 则跳过该 Socket
-func Broadcast(m message.Message, filter func(*Socket) bool) {
-	Default.Range(func(sock *Socket) bool {
-		if filter == nil || filter(sock) {
-			_ = sock.Async(m)
-		}
-		return true
-	})
 }
 
 // Listen 监听指定地址（默认实例）。

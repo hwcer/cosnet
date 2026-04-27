@@ -147,18 +147,7 @@ func (ss *Sockets) Register(i interface{}, prefix ...string) error {
 	return service.Register(i, prefix...)
 }
 
-// Broadcast 广播消息到所有 Socket。
-// 参数:
-//   - m: 要广播的消息
-//   - filter: 过滤函数，如果不为 nil 且返回 false 则跳过该 Socket
-func (ss *Sockets) Broadcast(m message.Message, filter func(*Socket) bool) {
-	ss.Range(func(sock *Socket) bool {
-		if filter == nil || filter(sock) {
-			_ = sock.Async(m)
-		}
-		return true
-	})
-}
+
 
 // On 注册事件处理函数（初始化时使用）。
 // 参数:

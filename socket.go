@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"runtime/debug"
 	"sync/atomic"
 
 	"github.com/hwcer/cosgo/scc"
@@ -353,7 +352,7 @@ func (sock *Socket) readMsgTrue(msg message.Message) {
 func (sock *Socket) handle(socket *Socket, msg message.Message) {
 	defer func() {
 		if e := recover(); e != nil {
-			socket.Errorf("server handle error:%v\n%v", e, string(debug.Stack()))
+			socket.Errorf("server handle error:%v", e)
 		}
 	}()
 	path, _, err := msg.Path()
@@ -394,10 +393,10 @@ func (sock *Socket) writeMsg(ctx context.Context) {
 
 func (sock *Socket) writeMsgTrue(msg message.Message) {
 	defer func() {
-		message.Release(msg)
 		if e := recover(); e != nil {
 			sock.Errorf(e)
 		}
+		message.Release(msg)
 	}()
 	if err := sock.conn.WriteMessage(sock, msg); err != nil {
 		sock.Errorf(err)

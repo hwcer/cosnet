@@ -26,11 +26,13 @@ func (m *message) Path() (r, q string, err error) {
 	magic := m.Magic()
 	code := m.Code()
 	if magic.Type == MagicTypePath {
-		if int(code)+4 > len(m.bytes) {
+		// code 是从 uint32 转来的 int32，大值会变负数；负数或越界均为非法包
+		pathLen := int(code)
+		if pathLen <= 0 || pathLen+4 > len(m.bytes) {
 			err = ErrMsgHeadIllegal
 			return
 		}
-		path := string(m.bytes[4 : int(code)+4])
+		path := string(m.bytes[4 : pathLen+4])
 		if i := strings.Index(path, "?"); i >= 0 {
 			r = path[:i]
 			q = path[i+1:]
@@ -46,11 +48,17 @@ func (m *message) Path() (r, q string, err error) {
 // Body 消息体
 func (m *message) Body() []byte {
 	magic := m.Magic()
-	i := int(4)
+	offset := 4
 	if magic.Type == MagicTypePath {
-		i += int(m.Code())
+		pathLen := int(m.Code())
+		if pathLen > 0 && pathLen+4 <= len(m.bytes) {
+			offset += pathLen
+		}
 	}
-	return m.bytes[i:]
+	if offset > len(m.bytes) {
+		return nil
+	}
+	return m.bytes[offset:]
 }
 
 // Bytes 生成二进制文件
