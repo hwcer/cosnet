@@ -346,34 +346,36 @@ func (sock *Socket) readMsgTrue(msg message.Message) {
 		logger.Debug("magic is nil :%v", msg)
 		return //未被初始化的消息
 	}
-	sock.handle(sock, msg)
+	sock.magic = magic.Key
+	sock.handle(msg)
 }
 
-func (sock *Socket) handle(socket *Socket, msg message.Message) {
+func (sock *Socket) handle(msg message.Message) {
 	defer func() {
 		if e := recover(); e != nil {
-			socket.Errorf("server handle error:%v", e)
+			sock.Errorf("server handle error:%v", e)
 		}
 	}()
 	path, _, err := msg.Path()
 	if err != nil {
-		socket.Errorf("message path error code:%d error:%v", msg.Code(), err)
+		sock.Errorf("message path error code:%d error:%v", msg.Code(), err)
 		return
 	}
+
 	node, _ := sock.sockets.Registry.Search(RegistryMethod, path)
 	if node == nil {
-		socket.Emit(EventTypeMessage, msg)
+		sock.Emit(EventTypeMessage, msg)
 		return
 	}
 	handler := node.Handler().(*Handler)
 	if handler == nil {
-		socket.Errorf("no handler for %s", path)
+		sock.Errorf("no handler for %s", path)
 		return
 	}
-	c := &Context{Socket: socket, Message: msg}
+	c := &Context{Socket: sock, Message: msg}
 	reply := handler.handle(node, c)
 	if err = handler.reply(c, reply); err != nil {
-		socket.Errorf("write reply message error,path:%s,errMsg:%v", path, err)
+		sock.Errorf("write reply message error,path:%s,errMsg:%v", path, err)
 	}
 }
 
