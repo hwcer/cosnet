@@ -124,7 +124,9 @@ func (this *Handler) reply(c *Context, reply any) (err error) {
 	if flag.Has(message.FlagConfirm) || flag.Has(message.FlagNoreply) {
 		return //确认包本身和明确不需要回复的响应
 	}
-	replyFlag := message.FlagConfirm
+	//业务层可通过 Context.Flag(f) 附加标记（如加密/压缩），零值时与原行为一致
+	replyFlag := c.flag
+	replyFlag.Set(message.FlagConfirm)
 	if flag.Has(message.FlagHeartbeat) {
 		replyFlag.Set(message.FlagHeartbeat)
 	}

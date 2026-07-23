@@ -8,7 +8,19 @@ import (
 // Context 封装了 Socket 和 Message，用于处理请求和响应。
 type Context struct {
 	*Socket                 // 网络连接
+	flag    message.Flag    // 出站(确认包)flag，零值即无附加；与入站 Message.Flag() 相互独立
 	Message message.Message // 当前处理的消息
+}
+
+// Flag 出站 flag：无参取值，传参设置（如 FlagCompressed/FlagEncrypted）。
+// flag 描述的是包自身的属性，故入站与出站各自独立：
+// 本方法只作用于确认包，入站包的 flag 请读 Message.Flag()，两者互不影响。
+// FlagConfirm 与心跳标记由 Handler.reply 补齐，业务层无需也无法抹掉。
+func (this *Context) Flag(set ...message.Flag) message.Flag {
+	if len(set) > 0 {
+		this.flag = set[0]
+	}
+	return this.flag
 }
 
 // Path 获取消息的路径和查询参数。
