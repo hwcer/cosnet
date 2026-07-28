@@ -105,8 +105,11 @@ func (ss *Sockets) Get(id uint64) (socket *Socket) {
 // 用于进程退出：否则开启无限重连时断开会立即重连、进程退不掉。
 func (ss *Sockets) Close() {
 	ss.Range(func(sock *Socket) bool {
-		atomic.StoreInt32(&sock.status, SocketStatusClosing)
-		sock.disconnect()
+		//用 CAS 而不是直接赋值：正在断开/重连中的 socket 不要再插一脚，
+		//否则会和工作协程里 defer 的 disconnect 撞上、重复 close(sock.stop)
+		if atomic.CompareAndSwapInt32(&sock.status, SocketStatusConnected, SocketStatusClosing) {
+			sock.disconnect()
+		}
 		return true
 	})
 }
