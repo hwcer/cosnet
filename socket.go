@@ -93,7 +93,9 @@ func (sock *Socket) disconnect() bool {
 		sock.conn = nil
 	}
 	sock.Emit(EventTypeDisconnect)
-	if sock.Type() == listener.SocketTypeClient {
+	//主动关闭(Close 置的 SocketStatusClosing)不再重连,否则进程退不掉:
+	//客户端一侧无限重连时,断开->重连->断开会一直转下去
+	if sock.Type() == listener.SocketTypeClient && status != SocketStatusClosing {
 		sock.status = SocketStatusReconnecting
 		return sock.tryReconnect()
 	}

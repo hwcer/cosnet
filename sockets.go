@@ -100,6 +100,17 @@ func (ss *Sockets) Get(id uint64) (socket *Socket) {
 
 // Range 遍历所有 Socket 连接。
 // 参数 fn: 遍历回调函数，如果返回 false 则停止遍历。
+// Close 关闭所有连接并释放。
+// 客户端连接不会重连（disconnect 会跳过 SocketStatusClosing 的 socket），
+// 用于进程退出：否则开启无限重连时断开会立即重连、进程退不掉。
+func (ss *Sockets) Close() {
+	ss.Range(func(sock *Socket) bool {
+		atomic.StoreInt32(&sock.status, SocketStatusClosing)
+		sock.disconnect()
+		return true
+	})
+}
+
 func (ss *Sockets) Range(fn func(socket *Socket) bool) {
 	ss.sockets.Range(func(_, v any) bool {
 		if s, ok := v.(*Socket); ok {
