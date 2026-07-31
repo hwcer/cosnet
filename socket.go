@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"sync/atomic"
+	"time"
 
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/session"
@@ -93,9 +94,10 @@ func (sock *Socket) disconnect() bool {
 		sock.conn = nil
 	}
 	sock.Emit(EventTypeDisconnect)
-	//主动关闭(Close 置的 SocketStatusClosing)不再重连,否则进程退不掉:
-	//客户端一侧无限重连时,断开->重连->断开会一直转下去
-	if sock.Type() == listener.SocketTypeClient && status != SocketStatusClosing {
+	//主动关闭(Close 置的 SocketStatusClosing)或已进入退出流程时不再重连,否则进程退不掉:
+	//scc 取消后 readMsg/writeMsg 会立刻返回并在 defer 里 disconnect,此时状态仍是
+	//SocketStatusConnected,只判 Closing 会重连成功->工作协程又立刻退出->再重连,死循环
+	if sock.Type() == listener.SocketTypeClient && status != SocketStatusClosing && !sock.sockets.stopped() {
 		sock.status = SocketStatusReconnecting
 		return sock.tryReconnect()
 	}
@@ -126,17 +128,51 @@ func (sock *Socket) release() {
 
 // reconnect 断线重连，仅仅作为客户端时自动重连服务器
 func (sock *Socket) tryReconnect() bool {
+	if sock.sockets.stopped() {
+		sock.release()
+		return false
+	}
 	address := sock.address
 	logger.Alert("socket reconnect:%s", address)
 	scc.SGO(func(ctx context.Context) {
-		if conn, err := sock.sockets.tryConnect(ctx, address, 0); err == nil {
-			sock.connect(conn)
+		//首拨也要等一拍。tryConnect 的退避是按"连不上"设计的(第一次立即拨),
+		//但对端"连上即断"(端口被别的服务占用、协议不匹配)时,重连链路上没有任何等待,
+		//会变成毫秒级死循环:拨通->工作协程立刻退出->再拨通,日志刷屏且空转 CPU
+		if !sock.waitReconnect(ctx) {
+			sock.release()
 			return
 		}
-
-		sock.release()
+		conn, err := sock.sockets.tryConnect(ctx, address, 0)
+		if err != nil {
+			sock.release()
+			return
+		}
+		//tryConnect 是先拨号后查 ctx,拨号期间进入退出流程时会带回一条可用连接,
+		//这里必须丢掉:再 connect 就等于把读写协程重新拉起来,关闭流程永远收不了尾
+		if sock.sockets.stopped() {
+			_ = conn.Close()
+			sock.release()
+			return
+		}
+		sock.connect(conn)
 	})
 	return false
+}
+
+// waitReconnect 重连前的等待，返回 false 表示等待期间已进入退出流程
+func (sock *Socket) waitReconnect(ctx context.Context) bool {
+	delay := sock.sockets.Options.ClientReconnectTime
+	if delay <= 0 {
+		return !sock.sockets.stopped()
+	}
+	timer := time.NewTimer(time.Duration(delay) * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return !sock.sockets.stopped()
+	}
 }
 
 func (sock *Socket) Id() uint64 {

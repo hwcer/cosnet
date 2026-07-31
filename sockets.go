@@ -53,6 +53,7 @@ type Sockets struct {
 	index    uint64                     // Socket 索引计数器
 	count    int64                      // 当前连接数
 	started  atomic.Bool                // 是否已启动
+	closed   atomic.Bool                // 是否已调用 Close，置位后客户端连接不再重连
 	sockets  syncmap.Map                // 存储所有 Socket 连接
 	emitter  map[EventType][]EventsFunc // 事件监听器映射
 	instance []listener.Listener        // 监听器实例列表
@@ -104,6 +105,9 @@ func (ss *Sockets) Get(id uint64) (socket *Socket) {
 // 客户端连接不会重连（disconnect 会跳过 SocketStatusClosing 的 socket），
 // 用于进程退出：否则开启无限重连时断开会立即重连、进程退不掉。
 func (ss *Sockets) Close() {
+	//必须先置位再遍历：处于 Reconnecting 的 socket 不在下面的 CAS 覆盖范围内，
+	//只能靠这个标记让它的重连协程在拨号返回后自行放弃，否则 Close 之后连接又活了
+	ss.closed.Store(true)
 	ss.Range(func(sock *Socket) bool {
 		//用 CAS 而不是直接赋值：正在断开/重连中的 socket 不要再插一脚，
 		//否则会和工作协程里 defer 的 disconnect 撞上、重复 close(sock.stop)
@@ -112,6 +116,13 @@ func (ss *Sockets) Close() {
 		}
 		return true
 	})
+}
+
+// stopped 是否处于退出流程：进程正在关闭(scc)或本实例已 Close。
+// 客户端重连必须以此为准，只看 socket 自身状态会漏掉退出期间由工作协程
+// 触发的 disconnect —— 那条路径上状态是 Connected，会被当成正常掉线去重连。
+func (ss *Sockets) stopped() bool {
+	return scc.Stopped() || ss.closed.Load()
 }
 
 func (ss *Sockets) Range(fn func(socket *Socket) bool) {
