@@ -193,7 +193,7 @@ cosnet.On(cosnet.EventTypeConnected, func(s *cosnet.Socket, _ any) {
 | `EventTypeReconnected`    | 客户端断线重连成功 | nil |
 | `EventTypeDisconnect`     | 连接断开 | nil |
 | `EventTypeAuthentication` | 调用 `Authentication()` | `bool` 是否重连 |
-| `EventTypeReplaced`       | 被顶号 | 新登录者 IP `string` |
+| `EventTypeReplaced`       | 有人请求顶号（进入协商期） | `*Replaced`（顶号方 IP + 剩余秒数） |
 
 事件回调建议在**启动前**注册；运行期修改 `emitter` 无锁保护。
 
@@ -218,7 +218,7 @@ cosnet.Options = cosnet.Config{
     WriteChanSize:           100,    // 每个 Socket 写通道缓冲
     ConnectMaxSize:          100000, // 最大并发连接，0 不限
     SocketConnectTime:       30,     // 无活动多少秒判定掉线
-    SocketReplacedTime:      5,      // 被顶号延时关闭旧连接（秒）
+    SocketReplacedTime:      30,     // 顶号协商期（秒），须 <= SocketConnectTime
     ClientReconnectMax:      10,     // 客户端最大重连次数，0 无限
     ClientReconnectTime:     1000,   // 重连基础等待（毫秒），实际为指数退避
     ClientReconnectMaxDelay: 30000,  // 重连等待上限（毫秒）
@@ -281,9 +281,21 @@ cosnet.Broadcast(m, func(s *cosnet.Socket) bool {
 
 ## 连接管理
 
-- `sock.Close(delay...)` 把状态置为 `Closing`，在 `delay` 秒后由心跳协程真正断开。期间 `cwrite` 里已排队的消息会继续发完。
+- `sock.Close(delay...)` 把状态置为 `Closing`，在 `delay` 秒后由心跳协程真正断开，返回是否由本次调用切入关闭流程。期间连接**仍然可写**（`CanWrite`），在途回包能发完。
+  ⚠️ `delay` 只会缩短剩余存活时间、不会延长：已经失联一阵的连接不能靠 `Close` 续命。
 - `sock.Authentication(data, reconnect...)` 绑定 `session.Data`，触发 `EventTypeAuthentication`，重连场景额外触发 `EventTypeReconnected`。
-- `sock.Replaced(newIP)` 处理顶号：清除 `data`，`SocketReplacedTime` 秒后关闭旧连接。
+- `sock.Replaced(newIP)` **发起顶号协商**（不是立即踢人）：老连接进入 `SocketReplacedTime` 秒的协商期，
+  期间 **只收不发**——服务器推送和在途回包照常送达，它自己发来的新请求一律被拒；倒计时结束才断开。
+  已在协商期内重复调用返回 `false`，不重复通知也不重置倒计时。
+- `sock.CanRead()` / `sock.CanWrite()` 分别控制**入站受理**与**出站发送**，关闭流程中两者并不同步：
+
+  | 状态 | `CanRead` | `CanWrite` | `IsReady` |
+  |---|---|---|---|
+  | `Connected` | ✅ | ✅ | ✅ |
+  | `Closing`（含顶号协商期） | ❌ | ✅ | ❌ |
+  | 其它 | ❌ | ❌ | ❌ |
+
+- `sock.Countdown()` 关闭倒计时剩余秒数，精度受心跳 tick 间隔限制，仅用于提示。
 - `sock.KeepAlive()` 手动重置心跳计数（收到业务消息时会自动调用）。
 
 ## 注意事项

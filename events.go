@@ -12,8 +12,17 @@ const (
 	EventTypeReconnected                         // 断线重连事件,参数:Socket,nil
 	EventTypeDisconnect                          // 断开连接事件,参数:Socket,nil
 	EventTypeAuthentication                      // 身份认证事件,参数:Socket,是否重连
-	EventTypeReplaced                            // 被顶号事件,参数:Socket,新Socket ip
+	EventTypeReplaced                            // 顶号协商事件,参数:Socket,*Replaced
 )
+
+// Replaced 顶号协商事件(EventTypeReplaced)的参数。
+//
+// 语义是"**有人想顶号**,还剩 Timeout 秒",不是"你已经被顶掉了":
+// 收到它的连接进入协商期,期间只收不发,倒计时结束才真正断开(见 Socket.Replaced)。
+type Replaced struct {
+	Address string // 请求顶号的客户端 IP
+	Timeout int32  // 协商剩余秒数,归零后旧连接被断开,新端届时重新登录即可上线
+}
 
 // EventsFunc 定义事件处理函数类型。
 // 参数:
