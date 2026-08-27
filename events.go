@@ -21,7 +21,7 @@ const (
 // 收到它的连接进入协商期,期间只收不发,倒计时结束才真正断开(见 Socket.Replaced)。
 type Replaced struct {
 	Address string // 请求顶号的客户端 IP
-	Timeout int32  // 协商剩余秒数,归零后旧连接被断开,新端届时重新登录即可上线
+	Timeout int32  // 剩余存活秒数,归零后本连接被断开(两种顶号策略下都一样)
 }
 
 // EventsFunc 定义事件处理函数类型。
