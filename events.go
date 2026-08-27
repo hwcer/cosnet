@@ -17,8 +17,9 @@ const (
 
 // Replaced 顶号协商事件(EventTypeReplaced)的参数。
 //
-// 语义是"**有人想顶号**,还剩 Timeout 秒",不是"你已经被顶掉了":
-// 收到它的连接进入协商期,期间只收不发,倒计时结束才真正断开(见 Socket.Replaced)。
+// 语义是"**你被顶号了**,还剩 Timeout 秒",不是"这条连接已经废了":
+// 收到它的连接进入存活期,期间只收不发,倒计时结束才真正断开(见 Socket.Replaced)。
+// 新端是立刻接管还是等它下线,由上层策略决定,这里看不出来。
 type Replaced struct {
 	Address string // 请求顶号的客户端 IP
 	Timeout int32  // 剩余存活秒数,归零后本连接被断开(两种顶号策略下都一样)
