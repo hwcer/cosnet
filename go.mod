@@ -4,8 +4,8 @@ go 1.25.0
 
 require (
 	github.com/gorilla/websocket v1.5.3
-	github.com/hwcer/cosgo v1.8.3-0.20260604075126-0f2a31620eb1
-	github.com/hwcer/logger v0.2.8
+	github.com/hwcer/cosgo v1.8.4-0.20260821022652-154e18615e0f
+	github.com/hwcer/logger v0.2.9-0.20260626033726-42e0a5927245
 	golang.org/x/sync v0.20.0
 )
 
@@ -32,7 +32,7 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.mongodb.org/mongo-driver/v2 v2.6.0 // indirect
+	go.mongodb.org/mongo-driver/v2 v2.7.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/exp v0.0.0-20260603202125-055de637280b // indirect
