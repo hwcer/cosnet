@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -49,6 +50,7 @@ func NewListener(srv *http.Server, route string) *Listener {
 		route:    route,
 		server:   srv,
 		connChan: make(chan *websocket.Conn, Options.ConnChanSize), // 使用配置的通道大小
+		done:     make(chan struct{}),
 	}
 	srv.Handler = ln
 	return ln
@@ -56,10 +58,12 @@ func NewListener(srv *http.Server, route string) *Listener {
 
 // Listener 实现listener.Listener接口
 type Listener struct {
-	err      error
-	route    string
-	server   *http.Server
-	connChan chan *websocket.Conn
+	err       error
+	route     string
+	server    *http.Server
+	connChan  chan *websocket.Conn
+	done      chan struct{} // Close时关闭,用于唤醒阻塞中的Accept
+	closeOnce sync.Once
 }
 
 // Accept 等待并返回下一个连接到监听器
@@ -67,13 +71,22 @@ func (ln *Listener) Accept() (listener.Conn, error) {
 	if ln.err != nil {
 		return nil, ln.err
 	}
-	conn := <-ln.connChan
+	//select done: Close后必须能唤醒阻塞的Accept,否则accept协程泄漏且进程退出挂起
+	var conn *websocket.Conn
+	select {
+	case conn = <-ln.connChan:
+	case <-ln.done:
+		return nil, net.ErrClosed
+	}
 	wssConn := NewConn(conn)
 	return wssConn, nil
 }
 
 // Close 关闭监听器
 func (ln *Listener) Close() error {
+	ln.closeOnce.Do(func() {
+		close(ln.done)
+	})
 	return ln.server.Close()
 }
 

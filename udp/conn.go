@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/hwcer/cosnet/listener"
@@ -13,12 +14,13 @@ import (
 
 // Conn 实现listener.Conn接口
 type Conn struct {
-	conn    *net.UDPConn
-	addr    *net.UDPAddr
-	msgChan chan []byte // 用于缓存UDP数据包
-	head    []byte      // 用于存储消息头
-	ln      *Listener   // 引用监听器，用于在关闭时移除自身
-	key     string      // 用于在监听器的conns map中标识自身
+	conn      *net.UDPConn
+	addr      *net.UDPAddr
+	msgChan   chan []byte // 用于缓存UDP数据包
+	head      []byte      // 用于存储消息头
+	ln        *Listener   // 引用监听器，用于在关闭时移除自身
+	key       string      // 用于在监听器的conns map中标识自身
+	closeOnce sync.Once
 }
 
 // Read 从连接中读取数据
@@ -35,14 +37,16 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	return n, err
 }
 
-// Close 关闭连接
+// Close 关闭连接,幂等:重复调用安全
 func (c *Conn) Close() error {
-	// 从活跃连接列表中移除
-	c.ln.removeConn(c.key)
-	// 关闭msgChan通道，避免资源泄漏
-	close(c.msgChan)
-	// UDP是无连接的，所以这里不需要关闭底层连接
-	// 底层连接由Listener管理
+	c.closeOnce.Do(func() {
+		// 从活跃连接列表中移除
+		c.ln.removeConn(c.key)
+		// 关闭msgChan通道，避免资源泄漏
+		close(c.msgChan)
+		// UDP是无连接的，所以这里不需要关闭底层连接
+		// 底层连接由Listener管理
+	})
 	return nil
 }
 

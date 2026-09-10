@@ -91,7 +91,8 @@ func (sock *Socket) disconnect() bool {
 	close(sock.stop)
 	if sock.conn != nil {
 		_ = sock.conn.Close()
-		sock.conn = nil
+		//不置nil:读写协程仍在并发读取该字段,普通写interface构成数据竞争;
+		//conn.Close本身幂等,保留已关闭的conn无副作用
 	}
 	sock.Emit(EventTypeDisconnect)
 	//主动关闭(Close 置的 SocketStatusClosing)或已进入退出流程时不再重连,否则进程退不掉:
@@ -109,7 +110,7 @@ func (sock *Socket) disconnect() bool {
 // release 销毁socket
 func (sock *Socket) release() {
 	sock.status = SocketStatusReleased
-	atomic.AddInt64(&sock.sockets.count, -1)
+	sock.sockets.count.Add(-1)
 	sock.sockets.sockets.Delete(sock.id)
 	sock.data = nil
 	// 释放通道中的所有消息

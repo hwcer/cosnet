@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -22,6 +23,15 @@ func NewConn(c *websocket.Conn) *Conn {
 type Conn struct {
 	*websocket.Conn
 	buff *bytes.Buffer
+	wmu  sync.Mutex // gorilla/websocket要求同一时刻仅允许一个写者,此锁序列化所有写入路径
+}
+
+// WriteRaw 直写原始websocket帧,绕过transform序列化
+// 供SocketIO等底层协议握手/心跳回包使用,与WriteMessage共用写锁
+func (c *Conn) WriteRaw(messageType int, data []byte) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	return c.Conn.WriteMessage(messageType, data)
 }
 
 // Read 实现 net.Conn 接口,不推荐使用
@@ -29,8 +39,10 @@ func (c *Conn) Read(b []byte) (int, error) {
 	return 0, errors.New("wss conn Read not support")
 }
 
-// Read 实现 net.Conn  接口, 不推荐使用
+// Write 实现 net.Conn  接口, 不推荐使用
 func (c *Conn) Write(b []byte) (n int, err error) {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
 	err = c.Conn.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		return 0, err
@@ -89,6 +101,8 @@ func (c *Conn) WriteMessage(socket listener.Socket, msg message.Message) error {
 		return nil
 	}
 	//logger.Trace("Socket response,PATH:%v   BODY:%v", msg.Path(), string(b))
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
 	err = c.Conn.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		return err

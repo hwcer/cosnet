@@ -12,12 +12,14 @@ import (
 
 // Listener 实现listener.Listener接口
 type Listener struct {
-	ln      *net.UDPConn
-	connCh  chan *Conn
-	addr    net.Addr
-	network string
-	conns   map[string]*Conn // 用于跟踪活跃的Conn对象
-	mu      sync.Mutex       // 用于保护conns map的并发访问
+	ln        *net.UDPConn
+	connCh    chan *Conn
+	done      chan struct{}
+	closeOnce sync.Once
+	addr      net.Addr
+	network   string
+	conns     map[string]*Conn // 用于跟踪活跃的Conn对象
+	mu        sync.Mutex       // 用于保护conns map的并发访问
 }
 
 // New 创建一个新的udp监听器
@@ -33,6 +35,7 @@ func New(network, address string) (listener.Listener, error) {
 	result := &Listener{
 		ln:      ln,
 		connCh:  make(chan *Conn, Options.ConnChanSize), // 使用配置的通道大小
+		done:    make(chan struct{}),
 		addr:    ln.LocalAddr(),
 		network: network,
 		conns:   make(map[string]*Conn),
@@ -43,23 +46,31 @@ func New(network, address string) (listener.Listener, error) {
 
 // Accept 等待并返回下一个连接到监听器
 func (ln *Listener) Accept() (listener.Conn, error) {
-	conn, ok := <-ln.connCh
-	if !ok {
-		return nil, errors.New("udp listener closed")
+	select {
+	case conn, ok := <-ln.connCh:
+		if !ok {
+			return nil, errors.New("udp listener closed")
+		}
+		return conn, nil
+	case <-ln.done:
+		return nil, net.ErrClosed
 	}
-	return conn, nil
 }
 
 // Close 关闭监听器
 func (ln *Listener) Close() error {
-	close(ln.connCh)
-	// 关闭所有活跃的Conn对象，使用写锁
+	ln.closeOnce.Do(func() {
+		close(ln.done)
+	})
+	// 先在锁内摘除全部连接,再在锁外逐个关闭:
+	// Conn.Close会经removeConn再次竞争mu,持锁直接关闭会自死锁
 	ln.mu.Lock()
-	for _, conn := range ln.conns {
-		conn.Close()
-	}
+	conns := ln.conns
 	ln.conns = nil
 	ln.mu.Unlock()
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
 	return ln.ln.Close()
 }
 
@@ -71,6 +82,10 @@ func (ln *Listener) Addr() net.Addr {
 // newConn 创建一个新的UDP连接
 // 注意：调用此方法前，必须已经持有ln.mu互斥锁
 func (ln *Listener) newConn(conn *net.UDPConn, addr *net.UDPAddr, key string) (r *Conn, err error) {
+	if ln.conns == nil {
+		//Listener已关闭
+		return nil, errors.New("udp listener closed")
+	}
 	r = &Conn{
 		conn:    conn,
 		addr:    addr,
@@ -78,9 +93,11 @@ func (ln *Listener) newConn(conn *net.UDPConn, addr *net.UDPAddr, key string) (r
 		ln:      ln,
 		key:     key,
 	}
-	// 发送到通道
+	// 发送到通道(connCh不会被close,close(done)即视为已关闭,避免向已关闭channel发送panic)
 	select {
 	case ln.connCh <- r:
+	case <-ln.done:
+		return nil, errors.New("udp listener closed")
 	default:
 		return nil, errors.New("udp listener conn channel full, drop conn")
 		// 通道已满，丢弃该连接
@@ -101,8 +118,8 @@ func (ln *Listener) readLoop() {
 		if n > 0 {
 			// 生成端点的唯一标识
 			addrKey := addr.String()
-			// 检查是否已存在该端点的Conn对象
 			ln.mu.Lock()
+			// 检查是否已存在该端点的Conn对象
 			conn, exists := ln.conns[addrKey]
 			if !exists {
 				// 创建一个新的UDP连接
@@ -112,19 +129,20 @@ func (ln *Listener) readLoop() {
 					continue
 				}
 			}
-			ln.mu.Unlock()
 
 			// 复制数据到新的切片，避免缓冲区被覆盖
 			data := make([]byte, n)
 			copy(data, buffer[:n])
 
-			// 将数据包发送到Conn对象的msgChan中
+			// 数据投递必须与Conn的生命周期互斥:Conn.Close需先经removeConn拿锁,
+			// 在锁内投递不会与close(msgChan)并发,否则向已关闭channel发送会panic
 			select {
 			case conn.msgChan <- data:
 			default:
 				logger.Alert("udp conn %s msg channel full, drop msg", conn.key)
 				// 通道已满，丢弃该数据包
 			}
+			ln.mu.Unlock()
 		}
 	}
 }

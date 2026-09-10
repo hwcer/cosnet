@@ -74,7 +74,7 @@ func Service(name ...string) *registry.Service {
 //   - prefix: 路径前缀，可选
 //
 // 返回值: 错误信息
-func Register(i interface{}, prefix ...string) error {
+func Register(i any, prefix ...string) error {
 	service := Service("")
 	return service.Register(i, prefix...)
 }

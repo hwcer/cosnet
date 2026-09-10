@@ -42,7 +42,7 @@ func TestPoolDisabled(t *testing.T) {
 	if m == nil {
 		t.Fatal("Require returned nil with pool disabled")
 	}
-	Release(m)  // 应为 no-op，不 panic
+	Release(m)   // 应为 no-op，不 panic
 	Release(nil) // nil 安全
 	Options.Pool = true
 }

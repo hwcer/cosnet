@@ -17,6 +17,10 @@ type message struct {
 
 func (m *message) Code() int32 {
 	if m.code == 0 {
+		if len(m.bytes) < 4 {
+			//数据体不足以容纳code(空包或畸形包),返回0由上层按非法包处理
+			return 0
+		}
 		magic := m.Magic()
 		m.code = int32(magic.Binary.Uint32(m.bytes[0:4]))
 	}
@@ -33,9 +37,9 @@ func (m *message) Path() (r, q string, err error) {
 			return
 		}
 		path := string(m.bytes[4 : pathLen+4])
-		if i := strings.Index(path, "?"); i >= 0 {
-			r = path[:i]
-			q = path[i+1:]
+		if before, after, ok := strings.Cut(path, "?"); ok {
+			r = before
+			q = after
 		} else {
 			r = path
 		}
@@ -65,23 +69,35 @@ func (m *message) Body() []byte {
 func (m *message) Bytes(w io.Writer, includeHeader bool) (n int, err error) {
 	var r int
 	size := m.Size()
-	compressed := false
+	//必须先压缩拿到真实长度再写包头:TCP接收端按包头size精确ReadFull,
+	//若包头写未压缩长度而线上是gzip字节,流会永久错位
+	var compressed []byte
+	if Options.AutoCompressSize > 0 && size > Options.AutoCompressSize && !m.Head.flag.Has(FlagCompressed) {
+		if compressed, err = m.compressBytes(); err != nil {
+			return
+		}
+		//压缩无收益,或压缩后超出MaxDataSize会被接收端拒包时,回退为原始数据
+		if int32(len(compressed)) >= size || (Options.MaxDataSize > 0 && int32(len(compressed)) > Options.MaxDataSize) {
+			compressed = nil
+		}
+	}
 	if includeHeader {
-		var head []byte
-		head, compressed = m.Head.bytes()
+		wireSize := size
+		if compressed != nil {
+			wireSize = int32(len(compressed))
+		}
+		head := m.Head.bytes(wireSize, compressed != nil)
 		if r, err = w.Write(head); err != nil {
 			return
 		}
 		n += r
-	} else {
-		compressed = Options.AutoCompressSize > 0 && size > Options.AutoCompressSize && !m.Head.flag.Has(FlagCompressed)
 	}
 	if size == 0 {
 		return
 	}
 	// 写入数据体
-	if compressed {
-		r, err = m.compress(w)
+	if compressed != nil {
+		r, err = w.Write(compressed)
 	} else {
 		r, err = w.Write(m.bytes)
 	}
@@ -103,8 +119,9 @@ func (m *message) Write(r io.Reader) (n int, err error) {
 		m.bytes = make([]byte, size, Options.Capacity)
 	}
 	n, err = io.ReadFull(r, m.bytes[0:size])
-	if n != size {
-		return n, io.ErrShortBuffer
+	if err != nil {
+		//n<size时ReadFull必返回错误(io.EOF/io.ErrUnexpectedEOF),返回真实错误而非笼统的ErrShortBuffer
+		return n, err
 	}
 	// 解压数据（如果已压缩）
 	if err = m.decompress(); err != nil {
@@ -241,18 +258,18 @@ func (m *message) decompress() error {
 	return nil
 }
 
-// compress 压缩数据并直接写入 writer
+// compressBytes 压缩数据并返回压缩后的字节
 // 注意：此方法不修改 m.bytes，保持原始数据未压缩状态
-func (m *message) compress(w io.Writer) (int, error) {
-	gw := gzip.NewWriter(w)
-	n, err := gw.Write(m.bytes)
-	if err != nil {
-		return n, err
+func (m *message) compressBytes() ([]byte, error) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	if _, err := gw.Write(m.bytes); err != nil {
+		return nil, err
 	}
 	if err := gw.Close(); err != nil {
-		return n, err
+		return nil, err
 	}
-	return n, nil
+	return buf.Bytes(), nil
 }
 
 func (m *message) Confirm() string {

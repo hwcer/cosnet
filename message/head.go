@@ -45,30 +45,32 @@ func (h *Head) Parse(head []byte) error {
 	h.flag = Flag(head[1])                           // 解析 tags 字段
 	h.size = int32(magic.Binary.Uint32(head[2:6]))   // 调整 size 字段位置
 	h.index = int32(magic.Binary.Uint32(head[6:10])) // 调整 index 字段位置
-	if h.size > Options.MaxDataSize {
+	//size为uint32转int32,大值会变负数;负数或超长均视为非法包,否则后续按size切片会panic
+	if h.size < 0 || h.size > Options.MaxDataSize {
 		return ErrMsgDataSizeTooLong
 	}
 	return nil
 }
 
-// bytes 生成二进制头，返回头部数据和是否启用压缩
-func (h *Head) bytes() ([]byte, bool) {
+// bytes 生成二进制头
+// wireSize 为线上实际传输的包体长度(启用压缩时为压缩后长度):
+// 接收端TCP按此长度ReadFull,若与实际字节数不一致会导致流错位
+// compressed 表示线上数据体是否为gzip压缩,须与实际写入的数据保持一致
+func (h *Head) bytes(wireSize int32, compressed bool) []byte {
 	magic := h.Magic()
 	head := make([]byte, messageHeadSize)
 	head[0] = h.magic
 	flag := h.flag
 
 	// 检查是否需要添加压缩标记
-	compressed := false
-	if Options.AutoCompressSize > 0 && h.size > Options.AutoCompressSize && !flag.Has(FlagCompressed) {
+	if compressed {
 		flag.Set(FlagCompressed)
-		compressed = true
 	}
 
 	head[1] = uint8(flag)                               // 写入 tags 字段
-	magic.Binary.PutUint32(head[2:6], uint32(h.size))   // 调整 size 字段位置
+	magic.Binary.PutUint32(head[2:6], uint32(wireSize)) // 调整 size 字段位置
 	magic.Binary.PutUint32(head[6:10], uint32(h.index)) // 调整 index 字段位置
-	return head, compressed
+	return head
 }
 
 func (h *Head) format(magic byte, flag Flag, index int32) (err error) {

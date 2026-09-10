@@ -51,7 +51,7 @@ func New() *Sockets {
 // Sockets 管理 Socket 连接的集合，包含服务器和客户端功能。
 type Sockets struct {
 	index    uint64                     // Socket 索引计数器
-	count    int64                      // 当前连接数
+	count    atomic.Int64               // 当前连接数
 	started  atomic.Bool                // 是否已启动
 	closed   atomic.Bool                // 是否已调用 Close，置位后客户端连接不再重连
 	sockets  syncmap.Map                // 存储所有 Socket 连接
@@ -72,7 +72,7 @@ func (ss *Sockets) Create(conn listener.Conn) (socket *Socket, err error) {
 	}
 	// 检查最大连接数
 	if ss.Options.ConnectMaxSize > 0 {
-		count := atomic.LoadInt64(&ss.count)
+		count := ss.count.Load()
 		if count >= int64(ss.Options.ConnectMaxSize) {
 			_ = conn.Close()
 			return nil, fmt.Errorf("max connections %d reached", ss.Options.ConnectMaxSize)
@@ -84,7 +84,7 @@ func (ss *Sockets) Create(conn listener.Conn) (socket *Socket, err error) {
 	socket.cwrite = make(chan message.Message, ss.Options.WriteChanSize)
 	socket.status = SocketStatusNone
 	ss.sockets.Store(socket.id, socket)
-	atomic.AddInt64(&ss.count, 1)
+	ss.count.Add(1)
 	socket.connect(conn)
 	return
 }
@@ -167,12 +167,10 @@ func (ss *Sockets) Handler(name ...string) *Handler {
 //   - prefix: 路径前缀，可选
 //
 // 返回值: 错误信息
-func (ss *Sockets) Register(i interface{}, prefix ...string) error {
+func (ss *Sockets) Register(i any, prefix ...string) error {
 	service := ss.Service("")
 	return service.Register(i, prefix...)
 }
-
-
 
 // On 注册事件处理函数（初始化时使用）。
 // 参数:

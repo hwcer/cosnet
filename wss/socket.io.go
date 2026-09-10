@@ -156,9 +156,17 @@ func (t *SocketIO) handleConnect(socket listener.Socket, m message.Message, data
 	// 构建 CONNECT 确认包
 	connectPacket := fmt.Sprintf("0%s,%s", ns, response)
 
-	conn := socket.Conn().(*Conn)
-	// 发送回复包
-	err := conn.Conn.WriteMessage(websocket.TextMessage, []byte(connectPacket))
+	iconn := socket.Conn()
+	if iconn == nil {
+		return net.ErrClosed
+	}
+	conn, ok := iconn.(*Conn)
+	if !ok {
+		return fmt.Errorf("socket.io connect: unexpected conn type %T", iconn)
+	}
+	// 发送回复包:必须经WriteRaw走连接级写锁,
+	// 直写会与writeMsg协程并发写同一gorilla连接导致帧损坏
+	err := conn.WriteRaw(websocket.TextMessage, []byte(connectPacket))
 	if err != nil {
 		return err
 	}

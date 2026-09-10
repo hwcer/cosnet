@@ -6,7 +6,7 @@ var pool *sync.Pool
 
 func init() {
 	pool = &sync.Pool{}
-	pool.New = func() interface{} {
+	pool.New = func() any {
 		return Options.New()
 	}
 }
