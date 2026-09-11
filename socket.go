@@ -61,7 +61,7 @@ const (
 func (sock *Socket) connect(conn listener.Conn) {
 	sock.conn = conn
 	sock.stop = make(chan struct{})
-	sock.status = SocketStatusConnected
+	atomic.StoreInt32(&sock.status, SocketStatusConnected)
 	sock.heartbeat = 0
 	sock.Emit(EventTypeConnected)
 	scc.SGO(sock.readMsg)
@@ -76,7 +76,7 @@ func isValidStatus(status int32) bool {
 // disconnect 断开连接时
 // 在工作协程和心跳中调用，仅仅当 SocketStatusConnected 时可以使用
 func (sock *Socket) disconnect() bool {
-	status := sock.status
+	status := atomic.LoadInt32(&sock.status)
 	if !isValidStatus(status) {
 		return false
 	}
@@ -99,17 +99,17 @@ func (sock *Socket) disconnect() bool {
 	//scc 取消后 readMsg/writeMsg 会立刻返回并在 defer 里 disconnect,此时状态仍是
 	//SocketStatusConnected,只判 Closing 会重连成功->工作协程又立刻退出->再重连,死循环
 	if sock.Type() == listener.SocketTypeClient && status != SocketStatusClosing && !sock.sockets.stopped() {
-		sock.status = SocketStatusReconnecting
+		atomic.StoreInt32(&sock.status, SocketStatusReconnecting)
 		return sock.tryReconnect()
 	}
-	sock.status = SocketStatusDisconnected
+	atomic.StoreInt32(&sock.status, SocketStatusDisconnected)
 	sock.release()
 	return true
 }
 
 // release 销毁socket
 func (sock *Socket) release() {
-	sock.status = SocketStatusReleased
+	atomic.StoreInt32(&sock.status, SocketStatusReleased)
 	sock.sockets.count.Add(-1)
 	sock.sockets.sockets.Delete(sock.id)
 	sock.data = nil
@@ -281,7 +281,7 @@ func (sock *Socket) Errorf(format any, args ...any) {
 // 倒计时永远走不完，新端也就永远上不来。
 // 会话心跳(data.KeepAlive)不受此限:协商期内会话必须保活,不能让它先于连接过期。
 func (sock *Socket) KeepAlive() {
-	if sock.status == SocketStatusConnected {
+	if atomic.LoadInt32(&sock.status) == SocketStatusConnected {
 		sock.heartbeat = 0
 	}
 	if sock.data != nil {
@@ -365,7 +365,7 @@ func (sock *Socket) Write(m message.Message, safe ...bool) (err error) {
 		}
 	}()
 	if !sock.CanWrite() {
-		return fmt.Errorf("socket not ready, status: %d", sock.status)
+		return fmt.Errorf("socket not ready, status: %d", atomic.LoadInt32(&sock.status))
 	}
 	// safe 模式（默认）：阻塞等待通道可用，但监听 stop 避免 socket 关闭后永久阻塞
 	// 非 safe 模式：通道满时直接丢弃
@@ -390,14 +390,14 @@ func (sock *Socket) Write(m message.Message, safe ...bool) (err error) {
 // IsReady 检查 Socket 是否完全正常（已连接且不在关闭流程中）。
 // 判断"能不能收请求/能不能发消息"请用 CanRead / CanWrite——关闭流程中两者并不同步。
 func (sock *Socket) IsReady() bool {
-	return sock.status == SocketStatusConnected
+	return atomic.LoadInt32(&sock.status) == SocketStatusConnected
 }
 
 // CanRead 是否受理客户端发来的请求（入站）。
 // 顶号协商期(SocketStatusClosing)为 false：被顶号的一方**只收不发**，
 // 它的新请求会被直接拒掉，不再进业务层。
 func (sock *Socket) CanRead() bool {
-	return sock.status == SocketStatusConnected
+	return atomic.LoadInt32(&sock.status) == SocketStatusConnected
 }
 
 // CanWrite 是否可向客户端发送消息（出站）。
@@ -406,13 +406,14 @@ func (sock *Socket) CanRead() bool {
 // 后续所有 Write 就全返回 "socket not ready"，而 deliver / handler.reply 里都是
 // `_ = sock.Send(...)`，错误被吞——线上表现为"服务端一切正常、客户端什么都收不到"。
 func (sock *Socket) CanWrite() bool {
-	return sock.status == SocketStatusConnected || sock.status == SocketStatusClosing
+	status := atomic.LoadInt32(&sock.status)
+	return status == SocketStatusConnected || status == SocketStatusClosing
 }
 
 // Countdown 关闭倒计时剩余秒数；不在关闭流程中返回 0。
 // 精度受心跳 tick 间隔限制(Options.Heartbeat，默认 10 秒)，只用于提示，别拿它做精确判定。
 func (sock *Socket) Countdown() int32 {
-	if sock.status != SocketStatusClosing {
+	if atomic.LoadInt32(&sock.status) != SocketStatusClosing {
 		return 0
 	}
 	if r := Options.SocketConnectTime - sock.heartbeat; r > 0 {
@@ -518,7 +519,7 @@ func (sock *Socket) writeMsgTrue(msg message.Message) {
 // 返回值: 当前心跳计数。
 func (sock *Socket) Heartbeat(v int32) int32 {
 	// 如果设置了连接超时时间，并且心跳计数超过了超时时间，则断开连接
-	status := sock.status
+	status := atomic.LoadInt32(&sock.status)
 	if !isValidStatus(status) {
 		return sock.heartbeat
 	}
