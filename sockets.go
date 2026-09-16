@@ -15,7 +15,6 @@ import (
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/utils"
-	"github.com/hwcer/cosgo/values"
 	"github.com/hwcer/cosnet/listener"
 	"github.com/hwcer/cosnet/message"
 	"github.com/hwcer/cosnet/tcp"
@@ -200,17 +199,20 @@ func (ss *Sockets) Emit(e EventType, s *Socket, attach ...any) {
 //   - s: 触发错误的 Socket
 //   - format: 错误格式字符串
 //   - args: 格式参数
+//
+// 事件 payload 是渲染好的文案,不走 values.Message/Args 机制,
+// 所以这里自行格式化,不依赖 values.Sprintf(B 模型后它不再吃 args)。
 func (ss *Sockets) Errorf(s *Socket, format any, args ...any) {
 	defer func() {
 		if e := recover(); e != nil {
 			logger.Error(e)
 		}
 	}()
-	var err any
+	var err any = format
 	if len(args) > 0 {
-		err = values.Sprintf(format, args...)
-	} else {
-		err = format
+		if f, ok := format.(string); ok {
+			err = fmt.Sprintf(f, args...)
+		}
 	}
 	ss.Emit(EventTypeError, s, err)
 }
