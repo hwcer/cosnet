@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 )
 
 type message struct {
@@ -91,8 +92,7 @@ func (m *message) Bytes(w io.Writer, includeHeader bool) (n int, err error) {
 		if compressed != nil {
 			wireSize = int32(len(compressed))
 		}
-		head := m.Head.bytes(wireSize, compressed != nil)
-		if r, err = w.Write(head); err != nil {
+		if r, err = m.Head.writeTo(w, wireSize, compressed != nil); err != nil {
 			return
 		}
 		n += r
@@ -271,11 +271,21 @@ func (m *message) decompress() error {
 	return nil
 }
 
+// gzipWriterPool 复用 gzip.Writer:每出站包新建 Writer(内部含窗口表等大对象)
+// 是压缩热路径的主要分配源
+var gzipWriterPool = sync.Pool{
+	New: func() any {
+		return gzip.NewWriter(nil)
+	},
+}
+
 // compressBytes 压缩数据并返回压缩后的字节
 // 注意：此方法不修改 m.bytes，保持原始数据未压缩状态
 func (m *message) compressBytes() ([]byte, error) {
 	var buf bytes.Buffer
-	gw := gzip.NewWriter(&buf)
+	gw := gzipWriterPool.Get().(*gzip.Writer)
+	defer gzipWriterPool.Put(gw)
+	gw.Reset(&buf)
 	if _, err := gw.Write(m.bytes); err != nil {
 		return nil, err
 	}

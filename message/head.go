@@ -2,6 +2,7 @@ package message
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/hwcer/cosgo/binder"
 )
@@ -52,13 +53,13 @@ func (h *Head) Parse(head []byte) error {
 	return nil
 }
 
-// bytes 生成二进制头
+// writeTo 把二进制头直接写入 w(栈数组,零堆分配——旧实现每出站包 make([]byte,10))
 // wireSize 为线上实际传输的包体长度(启用压缩时为压缩后长度):
 // 接收端TCP按此长度ReadFull,若与实际字节数不一致会导致流错位
 // compressed 表示线上数据体是否为gzip压缩,须与实际写入的数据保持一致
-func (h *Head) bytes(wireSize int32, compressed bool) []byte {
+func (h *Head) writeTo(w io.Writer, wireSize int32, compressed bool) (n int, err error) {
 	magic := h.Magic()
-	head := make([]byte, messageHeadSize)
+	var head [messageHeadSize]byte
 	head[0] = h.magic
 	flag := h.flag
 
@@ -70,7 +71,12 @@ func (h *Head) bytes(wireSize int32, compressed bool) []byte {
 	head[1] = uint8(flag)                               // 写入 tags 字段
 	magic.Binary.PutUint32(head[2:6], uint32(wireSize)) // 调整 size 字段位置
 	magic.Binary.PutUint32(head[6:10], uint32(h.index)) // 调整 index 字段位置
-	return head
+	return w.Write(head[:])
+}
+
+// HeadSize 消息头固定字节数
+func HeadSize() int {
+	return messageHeadSize
 }
 
 func (h *Head) format(magic byte, flag Flag, index int32) (err error) {

@@ -82,9 +82,8 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 // 攻击者可向在线玩家的地址注入垃圾包将其踢下线
 func (c *Conn) ReadMessage(_ listener.Socket, msg message.Message) error {
 	// 参考TCP实现，使用head字段存储消息头
-	if c.head == nil {
-		c.head = message.Options.Head()
-	}
+	//headSize 仅用于长度比较,直接取常量,不再为每个连接分配一次 10 字节头
+	headSize := message.HeadSize()
 	for {
 		// 从msgChan中读取数据包
 		b, ok := <-c.msgChan
@@ -93,7 +92,7 @@ func (c *Conn) ReadMessage(_ listener.Socket, msg message.Message) error {
 		}
 
 		// 检查数据包长度是否足够,不足跳过
-		if len(b) < len(c.head) {
+		if len(b) < headSize {
 			continue
 		}
 
