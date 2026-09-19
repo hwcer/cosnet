@@ -76,29 +76,33 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 }
 
 // ReadMessage 实现cosnet的消息读取接口
+//
+// 🔴 UDP 是逐包语义且源地址可伪造:解析失败/长度不足的单个数据报必须跳过并继续读
+// 下一个,而不是返回错误——旧实现任何坏包都会让 readMsg 整体退出触发 disconnect,
+// 攻击者可向在线玩家的地址注入垃圾包将其踢下线
 func (c *Conn) ReadMessage(_ listener.Socket, msg message.Message) error {
 	// 参考TCP实现，使用head字段存储消息头
 	if c.head == nil {
 		c.head = message.Options.Head()
 	}
+	for {
+		// 从msgChan中读取数据包
+		b, ok := <-c.msgChan
+		if !ok {
+			return io.EOF
+		}
 
-	// 从msgChan中读取数据包
-	b, ok := <-c.msgChan
-	if !ok {
-		return io.EOF
+		// 检查数据包长度是否足够,不足跳过
+		if len(b) < len(c.head) {
+			continue
+		}
+
+		// 解析消息,失败跳过该包继续读
+		if err := msg.Reset(b); err != nil {
+			continue
+		}
+		return nil
 	}
-
-	// 检查数据包长度是否足够
-	if len(b) < len(c.head) {
-		return io.ErrUnexpectedEOF
-	}
-
-	// 解析消息
-	if err := msg.Reset(b); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // WriteMessage 实现cosnet的消息写入接口

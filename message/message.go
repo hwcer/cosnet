@@ -69,6 +69,11 @@ func (m *message) Body() []byte {
 func (m *message) Bytes(w io.Writer, includeHeader bool) (n int, err error) {
 	var r int
 	size := m.Size()
+	//出站长度校验:入站超 MaxDataSize 会被 Head.Parse 拒包断连,业务序列化出
+	//超限回包时若原样发出,客户端会被断连(重推场景则循环断连),必须在发送侧报错
+	if Options.MaxDataSize > 0 && size > Options.MaxDataSize {
+		return 0, fmt.Errorf("message size %d exceeds MaxDataSize %d", size, Options.MaxDataSize)
+	}
 	//必须先压缩拿到真实长度再写包头:TCP接收端按包头size精确ReadFull,
 	//若包头写未压缩长度而线上是gzip字节,流会永久错位
 	var compressed []byte
@@ -248,7 +253,15 @@ func (m *message) decompress() error {
 		return err
 	}
 	defer gr.Close()
-	decompressed, err := io.ReadAll(gr)
+	//解压上限:压缩比可达 ~1000:1,一个合法头大小的恶意 gzip 包可膨胀至 GB 级,
+	//无界 ReadAll 是解压炸弹(入站数据可达公网)
+	limit := int64(Options.MaxDataSize)
+	if limit <= 0 {
+		limit = 64 << 20 //MaxDataSize 未限制时的兜底上限
+	} else {
+		limit *= 4 //允许压缩比内的正常放大,超限即判定为恶意包
+	}
+	decompressed, err := io.ReadAll(io.LimitReader(gr, limit))
 	if err != nil {
 		return err
 	}

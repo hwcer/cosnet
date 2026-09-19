@@ -16,6 +16,9 @@ import (
 )
 
 func NewConn(c *websocket.Conn) *Conn {
+	//读帧上限:gorilla 会把整帧读进内存才交给 Transform 校验,不设限的话
+	//单个恶意客户端用超大帧声明即可打爆内存(游戏服公网直达)
+	c.SetReadLimit(int64(message.Options.MaxDataSize) + 4096)
 	return &Conn{Conn: c}
 }
 
@@ -83,6 +86,12 @@ func (c *Conn) ReadMessage(socket listener.Socket, msg message.Message) error {
 }
 
 func (c *Conn) WriteMessage(socket listener.Socket, msg message.Message) error {
+	//buff 构建与 Reset 必须全程在写锁内:此前懒初始化/Reset 在锁外,一旦业务绕过
+	//单写协程并发调用本方法,两个协程会并发写同一个 bytes.Buffer(帧交错损坏),
+	//一方 Reset 还会截断另一方已取出的切片
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
 	if c.buff == nil {
 		c.buff = new(bytes.Buffer)
 	}
@@ -101,8 +110,6 @@ func (c *Conn) WriteMessage(socket listener.Socket, msg message.Message) error {
 		return nil
 	}
 	//logger.Trace("Socket response,PATH:%v   BODY:%v", msg.Path(), string(b))
-	c.wmu.Lock()
-	defer c.wmu.Unlock()
 	err = c.Conn.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		return err

@@ -78,7 +78,7 @@ func TestCloseNeverExtendsLifetime(t *testing.T) {
 	defer stop()
 
 	//模拟已经失联很久：只剩 SocketConnectTime-heartbeat 秒可活
-	sock.heartbeat = Options.SocketConnectTime - 5
+	sock.heartbeat.Store(Options.SocketConnectTime - 5)
 	if !sock.Replaced("10.0.0.1") {
 		t.Fatalf("Replaced failed")
 	}

@@ -3,6 +3,7 @@ package wss
 import (
 	"bytes"
 	"net/http"
+	"net/url"
 
 	"github.com/gorilla/websocket"
 	"github.com/hwcer/cosnet/listener"
@@ -30,8 +31,19 @@ func AccessControlAllow(r *http.Request) bool {
 	if len(Options.Origin) == 0 {
 		return true
 	}
+	//🔴 白名单必须比对 Origin 请求头:旧实现比对 r.URL.Host——浏览器 WS 升级请求行
+	//是 origin-form,该值几乎恒为空串,白名单永不命中(正常跨域客户端全被拒),
+	//伪造来源防护也完全没做
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return false
+	}
+	host := origin
+	if u, err := url.Parse(origin); err == nil {
+		host = u.Host
+	}
 	for _, o := range Options.Origin {
-		if o == "*" || o == r.URL.Host {
+		if o == "*" || o == origin || o == host {
 			return true
 		}
 	}

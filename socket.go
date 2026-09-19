@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -37,7 +38,9 @@ type Socket struct {
 	status    int32                // 连接状态：0-正常，1-正在关闭，2-已关闭
 	sockets   *Sockets             // 所属的 Sockets 管理器
 	address   string               // 客户端模式：连接的服务器地址,为空时代表是服务器模式
-	heartbeat int32                // 心跳计数器
+	heartbeat atomic.Int32         // 心跳计数器(daemon 累加/读协程清零/Close 推高,三方并发,必须原子)
+	deadline  atomic.Int32         // 关闭目标心跳值:Close/Replaced 设置,连接复用(connect)时清零
+	rwWg      sync.WaitGroup       // 当前代读写协程等待组:重连前必须等旧协程退出,否则旧 readMsg 会偷读新连接的字节
 }
 
 // Socket 状态常量。
@@ -62,10 +65,30 @@ func (sock *Socket) connect(conn listener.Conn) {
 	sock.conn = conn
 	sock.stop = make(chan struct{})
 	atomic.StoreInt32(&sock.status, SocketStatusConnected)
-	sock.heartbeat = 0
-	sock.Emit(EventTypeConnected)
-	scc.SGO(sock.readMsg)
-	scc.SGO(sock.writeMsg)
+	sock.heartbeat.Store(0)
+	sock.deadline.Store(0)
+	//Connected 事件同步执行业务 handler,可能 panic:
+	//  - 该调用链可能来自 Accept 循环,panic 会让监听器永久退出;
+	//  - 协程已起,读写不再受影响,单个 handler 的问题不应拖垮整个监听器
+	func() {
+		defer func() {
+			if e := recover(); e != nil {
+				logger.Alert("Socket connected event recover:%v", e)
+			}
+		}()
+		sock.Emit(EventTypeConnected)
+	}()
+	//重连路径在 connect 前会 rwWg.Wait() 等旧读写协程退出;
+	//新协程读写的都是新 conn/stop,不会再触碰旧连接的残余状态
+	sock.rwWg.Add(2)
+	scc.SGO(func(ctx context.Context) {
+		defer sock.rwWg.Done()
+		sock.readMsg(ctx)
+	})
+	scc.SGO(func(ctx context.Context) {
+		defer sock.rwWg.Done()
+		sock.writeMsg(ctx)
+	})
 }
 
 // isValidStatus 检查状态是否为活跃状态（可以执行操作的状态）
@@ -83,18 +106,23 @@ func (sock *Socket) disconnect() bool {
 	if !atomic.CompareAndSwapInt32(&sock.status, status, SocketStatusDisconnect) {
 		return false
 	}
-	defer func() {
-		if err := recover(); err != nil {
-			logger.Alert("Socket disconnect:%v", err)
+	//Emit 走业务回调可能 panic:收尾逻辑(重连/终态/release)必须独立执行,
+	//不能被 panic 跳过——否则 socket 永远停在中间态,count 不减、表项不删,
+	//ConnectMaxSize 被假性占满
+	func() {
+		defer func() {
+			if e := recover(); e != nil {
+				logger.Alert("Socket disconnect:%v", e)
+			}
+		}()
+		close(sock.stop)
+		if sock.conn != nil {
+			_ = sock.conn.Close()
+			//不置nil:读写协程仍在并发读取该字段,普通写interface构成数据竞争;
+			//conn.Close本身幂等,保留已关闭的conn无副作用
 		}
+		sock.Emit(EventTypeDisconnect)
 	}()
-	close(sock.stop)
-	if sock.conn != nil {
-		_ = sock.conn.Close()
-		//不置nil:读写协程仍在并发读取该字段,普通写interface构成数据竞争;
-		//conn.Close本身幂等,保留已关闭的conn无副作用
-	}
-	sock.Emit(EventTypeDisconnect)
 	//主动关闭(Close 置的 SocketStatusClosing)或已进入退出流程时不再重连,否则进程退不掉:
 	//scc 取消后 readMsg/writeMsg 会立刻返回并在 defer 里 disconnect,此时状态仍是
 	//SocketStatusConnected,只判 Closing 会重连成功->工作协程又立刻退出->再重连,死循环
@@ -143,6 +171,10 @@ func (sock *Socket) tryReconnect() bool {
 			sock.release()
 			return
 		}
+		//等旧代读写协程完全退出再拨新连接:旧 readMsg 的 conn.Close 返回不代表它已从
+		//ReadMessage 返回,不等的话 connect 会覆写 sock.conn/stop,旧协程可能偷读
+		//新连接的字节,新连接首包错乱
+		sock.rwWg.Wait()
 		conn, err := sock.sockets.tryConnect(ctx, address, 0)
 		if err != nil {
 			sock.release()
@@ -222,12 +254,21 @@ func (sock *Socket) Close(delay ...int32) bool {
 	if !atomic.CompareAndSwapInt32(&sock.status, SocketStatusConnected, SocketStatusClosing) {
 		return false
 	}
-	h := Options.SocketConnectTime
+	h := sock.sockets.Options.SocketConnectTime
 	if len(delay) > 0 {
 		h -= delay[0]
 	}
-	if h > sock.heartbeat {
-		sock.heartbeat = h
+	//deadline 只增不减:这是"只缩短剩余存活时间,不延长"的原子实现——
+	//旧实现直接比大小后写 sock.heartbeat,与读协程的 KeepAlive 清零、daemon 的累加
+	//构成三方竞争,顶号倒计时可能被并发包拨回满格
+	for {
+		cur := sock.deadline.Load()
+		if h <= cur {
+			break
+		}
+		if sock.deadline.CompareAndSwap(cur, h) {
+			break
+		}
 	}
 	return true
 }
@@ -264,7 +305,7 @@ func (sock *Socket) Authentication(v *session.Data, reconnect ...bool) {
 // 断开时，玩家此刻是**真的离线**（新端还没进来），data 为 nil 会让 EventSessionDisconnect
 // 整个丢掉。旧实现清它，是因为旧流程里新连接已经立刻接管、旧连接断开不算掉线。
 func (sock *Socket) Replaced(ip string) bool {
-	if !sock.Close(Options.SocketReplacedTime) {
+	if !sock.Close(sock.sockets.Options.SocketReplacedTime) {
 		return false
 	}
 	sock.Emit(EventTypeReplaced, &Replaced{Address: ip, Timeout: sock.Countdown()})
@@ -281,8 +322,10 @@ func (sock *Socket) Errorf(format any, args ...any) {
 // 倒计时永远走不完，新端也就永远上不来。
 // 会话心跳(data.KeepAlive)不受此限:协商期内会话必须保活,不能让它先于连接过期。
 func (sock *Socket) KeepAlive() {
-	if atomic.LoadInt32(&sock.status) == SocketStatusConnected {
-		sock.heartbeat = 0
+	//CAS 双写门槛:只有此刻仍是 Connected 才重置。若 Close 已把状态切到 Closing,
+	// CAS 失败,倒计时不被并发包拨回满格(顶号协商期"只收不发不能续命"的前提)
+	if atomic.CompareAndSwapInt32(&sock.status, SocketStatusConnected, SocketStatusConnected) {
+		sock.heartbeat.Store(0)
 	}
 	if sock.data != nil {
 		sock.data.KeepAlive()
@@ -416,7 +459,11 @@ func (sock *Socket) Countdown() int32 {
 	if atomic.LoadInt32(&sock.status) != SocketStatusClosing {
 		return 0
 	}
-	if r := Options.SocketConnectTime - sock.heartbeat; r > 0 {
+	d := sock.deadline.Load()
+	if d <= 0 {
+		d = sock.sockets.Options.SocketConnectTime
+	}
+	if r := d - sock.heartbeat.Load(); r > 0 {
 		return r
 	}
 	return 0
@@ -521,13 +568,21 @@ func (sock *Socket) Heartbeat(v int32) int32 {
 	// 如果设置了连接超时时间，并且心跳计数超过了超时时间，则断开连接
 	status := atomic.LoadInt32(&sock.status)
 	if !isValidStatus(status) {
-		return sock.heartbeat
+		return sock.heartbeat.Load()
 	}
-	sock.heartbeat += v
-	if Options.SocketConnectTime > 0 && sock.heartbeat > Options.SocketConnectTime {
+	cur := sock.heartbeat.Add(v)
+	threshold := sock.sockets.Options.SocketConnectTime
+	if status == SocketStatusClosing {
+		//顶号协商/主动关闭:以 Close 推高的 deadline 为准(旧实现把 deadline 写进
+		//heartbeat 本体,与 KeepAlive 清零构成竞争)
+		if d := sock.deadline.Load(); d > threshold {
+			threshold = d
+		}
+	}
+	if threshold > 0 && cur > threshold {
 		sock.disconnect()
 	} else {
 		sock.Emit(EventTypeHeartbeat, v)
 	}
-	return sock.heartbeat
+	return cur
 }

@@ -66,7 +66,15 @@ type Sockets struct {
 //   - socket: 创建的 Socket 实例
 //   - err: 错误信息
 func (ss *Sockets) Create(conn listener.Conn) (socket *Socket, err error) {
+	return ss.create(conn, "")
+}
+
+// create 带 client 地址的内部创建流程:address 必须在 connect(起读写协程)之前就绪,
+// 否则连接刚建立即被断开时,读协程的 Type() 读到空地址会误判为服务端模式,
+// 客户端 socket 直接销毁、自动重连失效;同时 address 的写与读协程的读构成数据竞争
+func (ss *Sockets) create(conn listener.Conn, address string) (socket *Socket, err error) {
 	if scc.Stopped() {
+		_ = conn.Close()
 		return nil, errors.New("server closed")
 	}
 	// 检查最大连接数
@@ -78,7 +86,7 @@ func (ss *Sockets) Create(conn listener.Conn) (socket *Socket, err error) {
 		}
 	}
 
-	socket = &Socket{sockets: ss}
+	socket = &Socket{sockets: ss, address: address}
 	socket.id = atomic.AddUint64(&ss.index, 1)
 	socket.cwrite = make(chan message.Message, ss.Options.WriteChanSize)
 	socket.status = SocketStatusNone
@@ -331,10 +339,7 @@ func (ss *Sockets) Connect(address string) (socket *Socket, err error) {
 	if err != nil {
 		return nil, err
 	}
-	socket, err = ss.Create(conn)
-	if err == nil {
-		socket.address = address
-	}
+	socket, err = ss.create(conn, address)
 	return
 }
 
