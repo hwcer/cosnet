@@ -39,8 +39,10 @@ type Socket struct {
 	sockets   *Sockets             // 所属的 Sockets 管理器
 	address   string               // 客户端模式：连接的服务器地址,为空时代表是服务器模式
 	heartbeat atomic.Int32         // 心跳计数器(daemon 累加/读协程清零/Close 推高,三方并发,必须原子)
-	deadline  atomic.Int32         // 关闭目标心跳值:Close/Replaced 设置,连接复用(connect)时清零
-	rwWg      sync.WaitGroup       // 当前代读写协程等待组:重连前必须等旧协程退出,否则旧 readMsg 会偷读新连接的字节
+	hbMu      sync.Mutex           //串行化 KeepAlive 清零与 Close 推高:两者都是对 heartbeat 的条件写,
+	//纯 atomic 无法消除"KeepAlive 判定 Connected 后 Close 才切 Closing 并推高"的交错窗口,
+	//该窗口会让顶号倒计时被并发包拨回满格,击穿"只缩短不延长"不变量
+	rwWg sync.WaitGroup // 当前代读写协程等待组:重连前必须等旧协程退出,否则旧 readMsg 会偷读新连接的字节
 }
 
 // Socket 状态常量。
@@ -66,7 +68,6 @@ func (sock *Socket) connect(conn listener.Conn) {
 	sock.stop = make(chan struct{})
 	atomic.StoreInt32(&sock.status, SocketStatusConnected)
 	sock.heartbeat.Store(0)
-	sock.deadline.Store(0)
 	//Connected 事件同步执行业务 handler,可能 panic:
 	//  - 该调用链可能来自 Accept 循环,panic 会让监听器永久退出;
 	//  - 协程已起,读写不再受影响,单个 handler 的问题不应拖垮整个监听器
@@ -258,18 +259,14 @@ func (sock *Socket) Close(delay ...int32) bool {
 	if len(delay) > 0 {
 		h -= delay[0]
 	}
-	//deadline 只增不减:这是"只缩短剩余存活时间,不延长"的原子实现——
-	//旧实现直接比大小后写 sock.heartbeat,与读协程的 KeepAlive 清零、daemon 的累加
-	//构成三方竞争,顶号倒计时可能被并发包拨回满格
-	for {
-		cur := sock.deadline.Load()
-		if h <= cur {
-			break
-		}
-		if sock.deadline.CompareAndSwap(cur, h) {
-			break
-		}
+	//推高心跳计数须与 KeepAlive 的清零互斥:先 CAS 成 Closing 再拿锁,
+	//KeepAlive 在锁内复查状态失败即放弃清零——"只缩短剩余存活时间,不延长"
+	//因此成为硬保证(旧实现的裸写会被并发包拨回满格)
+	sock.hbMu.Lock()
+	if h > sock.heartbeat.Load() {
+		sock.heartbeat.Store(h)
 	}
+	sock.hbMu.Unlock()
 	return true
 }
 
@@ -325,7 +322,13 @@ func (sock *Socket) KeepAlive() {
 	//CAS 双写门槛:只有此刻仍是 Connected 才重置。若 Close 已把状态切到 Closing,
 	// CAS 失败,倒计时不被并发包拨回满格(顶号协商期"只收不发不能续命"的前提)
 	if atomic.CompareAndSwapInt32(&sock.status, SocketStatusConnected, SocketStatusConnected) {
-		sock.heartbeat.Store(0)
+		sock.hbMu.Lock()
+		//锁内复查:Close 可能恰好插进来切到 Closing 并推高计数,
+		//此时不得清零,否则顶号倒计时被拨回满格
+		if atomic.LoadInt32(&sock.status) == SocketStatusConnected {
+			sock.heartbeat.Store(0)
+		}
+		sock.hbMu.Unlock()
 	}
 	if sock.data != nil {
 		sock.data.KeepAlive()
@@ -459,11 +462,7 @@ func (sock *Socket) Countdown() int32 {
 	if atomic.LoadInt32(&sock.status) != SocketStatusClosing {
 		return 0
 	}
-	d := sock.deadline.Load()
-	if d <= 0 {
-		d = sock.sockets.Options.SocketConnectTime
-	}
-	if r := d - sock.heartbeat.Load(); r > 0 {
+	if r := sock.sockets.Options.SocketConnectTime - sock.heartbeat.Load(); r > 0 {
 		return r
 	}
 	return 0
@@ -572,13 +571,6 @@ func (sock *Socket) Heartbeat(v int32) int32 {
 	}
 	cur := sock.heartbeat.Add(v)
 	threshold := sock.sockets.Options.SocketConnectTime
-	if status == SocketStatusClosing {
-		//顶号协商/主动关闭:以 Close 推高的 deadline 为准(旧实现把 deadline 写进
-		//heartbeat 本体,与 KeepAlive 清零构成竞争)
-		if d := sock.deadline.Load(); d > threshold {
-			threshold = d
-		}
-	}
 	if threshold > 0 && cur > threshold {
 		sock.disconnect()
 	} else {
