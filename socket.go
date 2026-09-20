@@ -318,11 +318,10 @@ func (sock *Socket) Errorf(format any, args ...any) {
 // 倒计时永远走不完，新端也就永远上不来。
 // 会话心跳(data.KeepAlive)不受此限:协商期内会话必须保活,不能让它先于连接过期。
 func (sock *Socket) KeepAlive() {
-	//CAS 双写门槛:只有此刻仍是 Connected 才重置。若 Close 已把状态切到 Closing,
-	// CAS 失败,倒计时不被并发包拨回满格(顶号协商期"只收不发不能续命"的前提)
-	// 仅 Connected 时重置:Close 已介入后收到的包不得续命(顶号协商期"只收不发
-	// 不能续命"的前提)。status 读取与 Store(0) 之间存在纳秒窗口(Close 恰好插入),
-	// 后果是协商倒计时被拨回一个周期——可接受,不为它给每包加锁
+	//仅 Connected 时重置:Close 已介入后收到的包不得续命(顶号协商期"只收不发
+	//不能续命"的前提)。status 读取与 Store(0) 之间存在纳秒窗口(Close 恰好插入),
+	//后果是协商倒计时被一次性拨回完整 SocketConnectTime——单次、有界、不会无限续命
+	//(后续包因 status 已非 Connected 不再重置),可接受,不为它给每包加锁
 	if atomic.LoadInt32(&sock.status) == SocketStatusConnected {
 		sock.heartbeat.Store(0)
 	}

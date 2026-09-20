@@ -18,7 +18,13 @@ import (
 func NewConn(c *websocket.Conn) *Conn {
 	//读帧上限:gorilla 会把整帧读进内存才交给 Transform 校验,不设限的话
 	//单个恶意客户端用超大帧声明即可打爆内存(游戏服公网直达)
-	c.SetReadLimit(int64(message.Options.MaxDataSize) + 4096)
+	limit := int64(message.Options.MaxDataSize)
+	if limit <= 0 {
+		//🔴 MaxDataSize<=0 不设限会退化为 4096:合法包被断连,配置错误变成
+		//更隐蔽的故障形态。与 message 包解压兜底同口径给 64MB
+		limit = 64 << 20
+	}
+	c.SetReadLimit(limit + 4096)
 	return &Conn{Conn: c}
 }
 

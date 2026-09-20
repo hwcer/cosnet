@@ -17,7 +17,6 @@ type Conn struct {
 	conn      *net.UDPConn
 	addr      *net.UDPAddr
 	msgChan   chan []byte // 用于缓存UDP数据包
-	head      []byte      // 用于存储消息头
 	ln        *Listener   // 引用监听器，用于在关闭时移除自身
 	key       string      // 用于在监听器的conns map中标识自身
 	closeOnce sync.Once

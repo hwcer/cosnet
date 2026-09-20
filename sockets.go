@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hwcer/cosgo"
+	"github.com/hwcer/cosgo/phase"
 	"github.com/hwcer/cosgo/registry"
 	"github.com/hwcer/cosgo/scc"
 	"github.com/hwcer/cosgo/utils"
@@ -183,7 +184,13 @@ func (ss *Sockets) Register(i any, prefix ...string) error {
 // 参数:
 //   - e: 事件类型
 //   - f: 事件处理函数
+// On 注册事件处理函数。🔴 仅启动期调用:emitter 是裸 map,运行期 append 与
+// Emit 的热路径读是真实数据竞争,守卫读 cosgo/phase,封板后只 Alert 提示并忽略
 func (ss *Sockets) On(e EventType, f EventsFunc) {
+	if phase.Sealed() {
+		phase.Alert("cosnet.Sockets.On(%v)", e)
+		return
+	}
 	ss.emitter[e] = append(ss.emitter[e], f)
 }
 
@@ -291,7 +298,10 @@ func (ss *Sockets) Start() error {
 		return nil
 	}
 	cosgo.On(cosgo.EventTypClosing, ss.stop)
-	scc.CGO(ss.daemon)
+	//🔴 SGO 而非 CGO:daemon 的 Heartbeat 分支会 Emit(EventTypeHeartbeat)进业务回调,
+	//CGO 无 recover,任一监听器 panic 直接打穿进程(connect/disconnect 两处 Emit
+	//已在 socket.go 用 SGO 隔离,心跳这条最脆的路径不能裸奔)
+	scc.SGO(ss.daemon)
 	return nil
 }
 

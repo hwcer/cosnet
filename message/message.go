@@ -261,9 +261,15 @@ func (m *message) decompress() error {
 	} else {
 		limit *= 4 //允许压缩比内的正常放大,超限即判定为恶意包
 	}
-	decompressed, err := io.ReadAll(io.LimitReader(gr, limit))
+	//🔴 读 limit+1 判定超限:LimitReader 恰好在 limit 处返回 EOF,直接 ReadAll(limit)
+	//会把超限炸弹截成 limit 字节的损坏消息正常投递(gzip CRC 尾块校验根本不会执行)——
+	//防住了 OOM 却没防住"损坏包进业务层"
+	decompressed, err := io.ReadAll(io.LimitReader(gr, limit+1))
 	if err != nil {
 		return err
+	}
+	if int64(len(decompressed)) > limit {
+		return ErrMsgDataSizeTooLong
 	}
 	m.bytes = decompressed
 	m.size = int32(len(m.bytes))
@@ -284,7 +290,12 @@ var gzipWriterPool = sync.Pool{
 func (m *message) compressBytes() ([]byte, error) {
 	var buf bytes.Buffer
 	gw := gzipWriterPool.Get().(*gzip.Writer)
-	defer gzipWriterPool.Put(gw)
+	defer func() {
+		//断开对 buf 的引用再归还:否则驻留池中的 Writer 扣住最后一次压缩输出
+		//(可达 MB 级的 bytes.Buffer),空闲期形成伪驻留
+		gw.Reset(io.Discard)
+		gzipWriterPool.Put(gw)
+	}()
 	gw.Reset(&buf)
 	if _, err := gw.Write(m.bytes); err != nil {
 		return nil, err
