@@ -53,7 +53,7 @@ func (h *Head) Parse(head []byte) error {
 	return nil
 }
 
-// writeTo 把二进制头直接写入 w(栈数组,零堆分配——旧实现每出站包 make([]byte,10))
+// writeTo 把二进制头直接写入 w(栈数组,经 io.Writer 接口仍逃逸到堆,与旧 bytes() 等价——旧实现每出站包 make([]byte,10))
 // wireSize 为线上实际传输的包体长度(启用压缩时为压缩后长度):
 // 接收端TCP按此长度ReadFull,若与实际字节数不一致会导致流错位
 // compressed 表示线上数据体是否为gzip压缩,须与实际写入的数据保持一致

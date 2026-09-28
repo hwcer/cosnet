@@ -184,6 +184,7 @@ func (ss *Sockets) Register(i any, prefix ...string) error {
 // 参数:
 //   - e: 事件类型
 //   - f: 事件处理函数
+//
 // On 注册事件处理函数。🔴 仅启动期调用:emitter 是裸 map,运行期 append 与
 // Emit 的热路径读是真实数据竞争,守卫读 cosgo/phase,封板后只 Alert 提示并忽略
 func (ss *Sockets) On(e EventType, f EventsFunc) {
@@ -424,6 +425,13 @@ func (ss *Sockets) daemon(ctx context.Context) {
 // Heartbeat 对所有连接执行心跳检查。
 // 参数 v: 心跳计数增量。
 func (ss *Sockets) Heartbeat(v int32) {
+	func() {
+		defer func() {
+			if e := recover(); e != nil {
+				logger.Alert("sockets heartbeat daemon tick panic:%v", e)
+			}
+		}()
+	}()
 	ss.Range(func(socket *Socket) bool {
 		_ = socket.Heartbeat(v)
 		return true
