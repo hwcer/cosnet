@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/hwcer/cosgo/scc"
@@ -469,7 +470,11 @@ func (sock *Socket) readMsg(_ context.Context) {
 		msg := message.Require()
 		if err := sock.conn.ReadMessage(sock, msg); err != nil {
 			message.Release(msg)
-			if err != io.EOF && !errors.Is(err, net.ErrClosed) {
+			if isDisconnectError(err) {
+				//对端断开是长连接日常,不上报 EventTypeError;Debug 留痕方便开发期
+				//排查(生产 INFO 级别下不格式化不落盘,零开销)
+				logger.Debug("socket disconnect,id:%v,err:%v", sock.Id(), err)
+			} else {
 				sock.Errorf(err)
 			}
 			return
@@ -477,6 +482,24 @@ func (sock *Socket) readMsg(_ context.Context) {
 		sock.readMsgTrue(msg)
 		message.Release(msg)
 	}
+}
+
+// isDisconnectError 判断是否为对端断开类错误。这类错误是长连接的日常
+//(客户端杀进程、断网、切换网络),不是服务端故障,上报 EventTypeError 纯属噪音
+//——过滤后订阅方(网关主程序的 socket error 日志等)不再收到。
+//
+// 🔴 Windows 上 syscall.ECONNRESET 是 APPLICATION_ERROR 段(536870935),
+// 与真实网络错误的 WSAECONNRESET(10054) 数值不同,errors.Is 永远匹配不上
+//——必须按 WSA 数值比对;Linux 上退回 errors.Is(errno 语义一致)。
+func isDisconnectError(err error) bool {
+	if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) && (errno == 10054 || errno == 10053) {
+		return true //WSAECONNRESET / WSAECONNABORTED
+	}
+	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED)
 }
 
 func (sock *Socket) readMsgTrue(msg message.Message) {
